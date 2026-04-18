@@ -144,11 +144,24 @@ bool BookooScales::decodeAndHandleNotification() {
       return false;
     }
 
-    // BISECT STEP: temporarily reverting to the minimal weight-only parse
-    // while we isolate which of the new parsing additions breaks weight flow
-    // on the Bookoo Themis Ultra. All the new setters (timer, unit, flow,
-    // battery, auto-mode) are commented out below — only the weight parse
-    // (identical to upstream's implementation) remains.
+    // BISECT STEP 2: timer + unit + flow setters re-enabled; battery and
+    // auto-mode still commented out. Weight-only parse (step 1) was confirmed
+    // working, so the regression is narrowed to one of these 5 setters. If
+    // this build breaks weight display, the culprit is in timer/unit/flow.
+    // If it still works, the culprit is setBatteryLevel or setAutoModeStopCondition.
+
+    // Scale timer (bytes 2-4, 3 bytes big-endian unsigned, milliseconds).
+    const uint32_t timerMs = (static_cast<uint32_t>(dataBuffer[2]) << 16) |
+                             (static_cast<uint32_t>(dataBuffer[3]) << 8)  |
+                              static_cast<uint32_t>(dataBuffer[4]);
+    RemoteScales::setScaleTimerMs(timerMs);
+
+    // Weight unit (byte 5).
+    switch (dataBuffer[5]) {
+      case 0x01: RemoteScales::setWeightUnit(ScaleWeightUnit::OUNCE); break;
+      case 0x02: RemoteScales::setWeightUnit(ScaleWeightUnit::GRAM); break;
+      default:   RemoteScales::setWeightUnit(ScaleWeightUnit::UNKNOWN); break;
+    }
 
     // Weight (sign byte 6 + value bytes 7-9, 0.01g resolution).
     int32_t rawWeight = (static_cast<int32_t>(dataBuffer[7]) << 16) |
@@ -159,8 +172,15 @@ bool BookooScales::decodeAndHandleNotification() {
     }
     RemoteScales::setWeight(rawWeight * 0.01f);
 
-    // Flow/battery/auto-mode setters intentionally skipped during bisect.
-    // Add them back one at a time after confirming weight shows.
+    // Flow rate (sign byte 10 + value bytes 11-12, 0.01 g/s resolution).
+    int32_t rawFlow = (static_cast<int32_t>(dataBuffer[11]) << 8) |
+                       static_cast<int32_t>(dataBuffer[12]);
+    if (dataBuffer[10] == 0x2D) { // '-'
+      rawFlow = -rawFlow;
+    }
+    RemoteScales::setFlowRate(rawFlow * 0.01f);
+
+    // setBatteryLevel + setAutoModeStopCondition intentionally still skipped.
   }
   else if (productNumber == 0x03 && messageType == BookooMessageType::SYSTEM) {
     BookooScales::tare();
