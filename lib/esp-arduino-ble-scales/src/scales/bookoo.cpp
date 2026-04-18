@@ -180,8 +180,12 @@ bool BookooScales::decodeAndHandleNotification() {
     }
     RemoteScales::setFlowRate(rawFlow * 0.01f);
 
-    // BISECT STEP 3: setBatteryLevel enabled; setAutoModeStopCondition still skipped.
+    // BISECT STEP 4: all 5 setters enabled, paired with a clean rebuild to rule
+    // out stale .o files from the incremental builds used in earlier bisect
+    // rounds. If weight still breaks with auto-mode, it's a real bug; if it
+    // works, the earlier "bug" was a PlatformIO cache artifact.
     RemoteScales::setBatteryLevel(dataBuffer[13]);
+    RemoteScales::setAutoModeStopCondition(dataBuffer[18]);
   }
   else if (productNumber == 0x03 && messageType == BookooMessageType::SYSTEM) {
     BookooScales::tare();
