@@ -144,37 +144,11 @@ bool BookooScales::decodeAndHandleNotification() {
       return false;
     }
 
-    // Parse the full 20-byte weight notification per the Bookoo protocol spec:
-    // https://github.com/BooKooCode/OpenSource/blob/main/bookoo_ultra_scale/protocols.md
-    //
-    // Byte layout (0-indexed):
-    //   [0]    product id (0x03)
-    //   [1]    message type (0x0B = weight)
-    //   [2-4]  scale-internal timestamp (ms, 3 bytes unsigned)
-    //   [5]    weight unit (0x01 = ounce, 0x02 = gram)
-    //   [6]    weight sign ('+' = 0x2B, '-' = 0x2D)
-    //   [7-9]  weight * 100 in grams (3 bytes unsigned)
-    //   [10]   flow sign
-    //   [11-12] flow rate * 100 in g/s (2 bytes unsigned)
-    //   [13]   battery percentage (0-100)
-    //   [14-15] standby timer (minutes, 2 bytes unsigned) -- not surfaced yet
-    //   [16]   buzzer gear                                 -- not surfaced yet
-    //   [17]   flow-smoothing switch (0/1)                 -- not surfaced yet
-    //   [18]   Ultra: auto-mode stop condition (0/1); Mini: reserved
-    //   [19]   checksum
-
-    // Scale timer (bytes 2-4, 3 bytes big-endian unsigned, milliseconds).
-    const uint32_t timerMs = (static_cast<uint32_t>(dataBuffer[2]) << 16) |
-                             (static_cast<uint32_t>(dataBuffer[3]) << 8)  |
-                              static_cast<uint32_t>(dataBuffer[4]);
-    RemoteScales::setScaleTimerMs(timerMs);
-
-    // Weight unit (byte 5).
-    switch (dataBuffer[5]) {
-      case 0x01: RemoteScales::setWeightUnit(ScaleWeightUnit::OUNCE); break;
-      case 0x02: RemoteScales::setWeightUnit(ScaleWeightUnit::GRAM); break;
-      default:   RemoteScales::setWeightUnit(ScaleWeightUnit::UNKNOWN); break;
-    }
+    // BISECT STEP: temporarily reverting to the minimal weight-only parse
+    // while we isolate which of the new parsing additions breaks weight flow
+    // on the Bookoo Themis Ultra. All the new setters (timer, unit, flow,
+    // battery, auto-mode) are commented out below — only the weight parse
+    // (identical to upstream's implementation) remains.
 
     // Weight (sign byte 6 + value bytes 7-9, 0.01g resolution).
     int32_t rawWeight = (static_cast<int32_t>(dataBuffer[7]) << 16) |
@@ -185,21 +159,8 @@ bool BookooScales::decodeAndHandleNotification() {
     }
     RemoteScales::setWeight(rawWeight * 0.01f);
 
-    // Flow rate (sign byte 10 + value bytes 11-12, 0.01 g/s resolution).
-    int32_t rawFlow = (static_cast<int32_t>(dataBuffer[11]) << 8) |
-                       static_cast<int32_t>(dataBuffer[12]);
-    if (dataBuffer[10] == 0x2D) { // '-'
-      rawFlow = -rawFlow;
-    }
-    RemoteScales::setFlowRate(rawFlow * 0.01f);
-
-    // Battery percentage (byte 13).
-    RemoteScales::setBatteryLevel(dataBuffer[13]);
-
-    // Auto-mode stop condition (byte 18) -- only meaningful on Ultra scales
-    // where hasAutoModeStopCondition() returns true. We still store it so an
-    // Ultra-aware subclass (or a future firmware-side model check) can read it.
-    RemoteScales::setAutoModeStopCondition(dataBuffer[18]);
+    // Flow/battery/auto-mode setters intentionally skipped during bisect.
+    // Add them back one at a time after confirming weight shows.
   }
   else if (productNumber == 0x03 && messageType == BookooMessageType::SYSTEM) {
     BookooScales::tare();
