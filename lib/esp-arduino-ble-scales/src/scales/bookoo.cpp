@@ -34,14 +34,7 @@ bool BookooScales::connect() {
   }
   subscribeToNotifications();
   RemoteScales::setWeight(0.f);
-
-  // Intentionally NOT calling disableScaleSmoothing() in this hotfix -- early
-  // hardware test on Bookoo Themis Ultra showed weight samples stopped
-  // arriving at the display shortly after the 0x08 0x00 command was sent on
-  // connect (precise cause TBD; could be the scale resetting its BLE session
-  // in response). getFlowRate() still parses the native field so consumers
-  // can use it; it just stays routed through the scale's own EMA until the
-  // interaction is understood.
+  disableScaleSmoothing();
 
   return true;
 }
