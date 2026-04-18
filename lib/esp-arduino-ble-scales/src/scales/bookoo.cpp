@@ -180,7 +180,8 @@ bool BookooScales::decodeAndHandleNotification() {
     }
     RemoteScales::setFlowRate(rawFlow * 0.01f);
 
-    // setBatteryLevel + setAutoModeStopCondition intentionally still skipped.
+    // BISECT STEP 3: setBatteryLevel enabled; setAutoModeStopCondition still skipped.
+    RemoteScales::setBatteryLevel(dataBuffer[13]);
   }
   else if (productNumber == 0x03 && messageType == BookooMessageType::SYSTEM) {
     BookooScales::tare();
