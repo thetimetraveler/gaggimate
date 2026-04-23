@@ -22,13 +22,9 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
     exit 1
 fi
 
-echo "Fetching $REMOTE_UPSTREAM/$BASE_BRANCH and $REMOTE_ORIGIN..."
-git fetch "$REMOTE_UPSTREAM" "$BASE_BRANCH"
-git fetch "$REMOTE_ORIGIN" --prune
-
-echo "Resetting $TARGET_BRANCH to $REMOTE_UPSTREAM/$BASE_BRANCH..."
-git checkout -B "$TARGET_BRANCH" "$REMOTE_UPSTREAM/$BASE_BRANCH"
-
+# Read features list BEFORE resetting the working tree — otherwise the
+# first-ever run can't see the list (it only lands on fork/main after
+# the feature/fork-infra merge further down).
 if [[ ! -f "$FEATURES_FILE" ]]; then
     echo "ERROR: feature list $FEATURES_FILE not found." >&2
     exit 1
@@ -41,6 +37,13 @@ while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     FEATURES+=("$line")
 done < "$FEATURES_FILE"
+
+echo "Fetching $REMOTE_UPSTREAM/$BASE_BRANCH and $REMOTE_ORIGIN..."
+git fetch "$REMOTE_UPSTREAM" "$BASE_BRANCH"
+git fetch "$REMOTE_ORIGIN" --prune
+
+echo "Resetting $TARGET_BRANCH to $REMOTE_UPSTREAM/$BASE_BRANCH..."
+git checkout -B "$TARGET_BRANCH" "$REMOTE_UPSTREAM/$BASE_BRANCH"
 
 for branch in "${FEATURES[@]}"; do
     remote_ref="$REMOTE_ORIGIN/$branch"
