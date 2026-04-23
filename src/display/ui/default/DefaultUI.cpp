@@ -672,6 +672,11 @@ void DefaultUI::setupReactive() {
                 return;
             }
             lv_obj_clear_flag(ui_BrewScreen_batteryLabel, LV_OBJ_FLAG_HIDDEN);
+            // Force the modeSwitch flex layout to settle before we read the
+            // scale icon's position. Without this the icon's x/y is whatever
+            // it was on the previous layout pass and align_to drops the
+            // battery a few pixels off-axis from the visible icon.
+            lv_obj_update_layout(ui_BrewScreen_modeSwitch);
             // Anchor the battery label to the bottom of the scale icon each
             // render — the icon's position is decided by the flex layout, so
             // this tracks whatever the flex algorithm does on resize / relayout.

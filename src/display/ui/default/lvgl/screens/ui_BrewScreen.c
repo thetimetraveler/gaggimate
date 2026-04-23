@@ -307,6 +307,10 @@ void ui_BrewScreen_screen_init(void) {
     ui_object_set_themeable_style_property(ui_BrewScreen_batteryLabel, LV_PART_MAIN | LV_STATE_DEFAULT, LV_STYLE_TEXT_OPA,
                                            _ui_theme_alpha_NiceWhite);
     lv_obj_set_style_text_align(ui_BrewScreen_batteryLabel, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+    // Zero out padding so the glyph's visual center matches the label's
+    // object center — otherwise default theme padding shifts the rendered
+    // glyph a few pixels off-axis from the scale icon above.
+    lv_obj_set_style_pad_all(ui_BrewScreen_batteryLabel, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     // Montserrat 20 matches the 24pt weight's visual weight but stays
     // subordinate, and both fonts' x-heights line up under flex centering.
     lv_obj_set_style_text_font(ui_BrewScreen_batteryLabel, &lv_font_montserrat_20, LV_PART_MAIN | LV_STATE_DEFAULT);
