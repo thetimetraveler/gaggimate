@@ -205,6 +205,39 @@ void WebUIPlugin::setupServer() {
     server.on("/api/scales/connect", [this](AsyncWebServerRequest *request) { handleBLEScaleConnect(request); });
     server.on("/api/scales/scan", [this](AsyncWebServerRequest *request) { handleBLEScaleScan(request); });
     server.on("/api/scales/info", [this](AsyncWebServerRequest *request) { handleBLEScaleInfo(request); });
+    server.on("/api/scales/debug", [this](AsyncWebServerRequest *request) {
+        // Fork-only diagnostic: counters + live flags for every stage of the
+        // Bookoo -> display -> brew-target pipeline. Pinpoints whether weights
+        // are dropped at the onMeasurement gates or upstream in the BLE
+        // subscribe path (zero enter count).
+        JsonDocument doc;
+        doc["scaleConnected"] = BLEScales.isConnected();
+        doc["scaleName"] = BLEScales.getName();
+        doc["scaleUUID"] = BLEScales.getUUID();
+        doc["scaleRSSI"] = BLEScales.getRSSI();
+        doc["hasWeightUnit"] = BLEScales.hasWeightUnit();
+        doc["weightUnit"] = static_cast<int>(BLEScales.getWeightUnit());
+        doc["hasFlowRate"] = BLEScales.hasFlowRate();
+        doc["flowRate"] = BLEScales.getFlowRate();
+        doc["hasBattery"] = BLEScales.hasBatteryLevel();
+        doc["battery"] = BLEScales.getBatteryLevel();
+        doc["hasScaleTimer"] = BLEScales.hasScaleTimer();
+        doc["scaleTimerMs"] = BLEScales.getScaleTimerMs();
+        doc["onMeasurementEnterCount"] = BLEScales.onMeasurementEnterCount;
+        doc["onMeasurementPassCount"] = BLEScales.onMeasurementPassCount;
+        doc["onMeasurementDropRateLimit"] = BLEScales.onMeasurementDropRateLimit;
+        doc["onMeasurementDropInactive"] = BLEScales.onMeasurementDropInactive;
+        doc["onMeasurementDropInvalid"] = BLEScales.onMeasurementDropInvalid;
+        doc["onMeasurementDropOunce"] = BLEScales.onMeasurementDropOunce;
+        doc["lastWeightSeen"] = BLEScales.lastWeightSeen;
+        doc["msSinceLastOnMeasurement"] =
+            BLEScales.lastOnMeasurementMs == 0 ? -1 : static_cast<long>(millis() - BLEScales.lastOnMeasurementMs);
+        doc["isVolumetricAvailable"] = controller->isVolumetricAvailable();
+        doc["isBluetoothScaleHealthy"] = controller->isBluetoothScaleHealthy();
+        AsyncResponseStream *response = request->beginResponseStream("application/json");
+        serializeJson(doc, *response);
+        request->send(response);
+    });
     FS *fs = &SPIFFS;
     if (controller->isSDCard()) {
         fs = &SD_MMC;
