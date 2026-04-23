@@ -53,7 +53,12 @@ jobs:
           PBUMP=$((P + 1))
           COMMITS=$(git rev-list --count HEAD)
           SHA=$(git rev-parse --short HEAD)
-          echo "v${M}.${N}.${PBUMP}-fork.${COMMITS}-g${SHA}" > out/version.txt
+          # Prerelease must contain NO '.' — lib/OTA/src/semver_extensions.cpp's
+          # from_string() splits on '.' and only keeps the first three chunks,
+          # so a dotted prerelease like "fork.818-gSHA" collapses to "fork"
+          # on every build and isUpdateAvailable() can't tell builds apart.
+          # Use '-' between "fork", the commit count, and the SHA instead.
+          echo "v${M}.${N}.${PBUMP}-fork-${COMMITS}-g${SHA}" > out/version.txt
           cat out/version.txt
       - name: Build web UI (SPIFFS source)
         run: ./scripts/build_spiffs.sh
