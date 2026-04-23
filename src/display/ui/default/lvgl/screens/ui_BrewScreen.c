@@ -289,8 +289,12 @@ void ui_BrewScreen_screen_init(void) {
     // the same modeSwitch flex pill. DefaultUI drives visibility/color/text
     // via an effect; starts hidden + empty so it doesn't flash at init time.
     ui_BrewScreen_batteryLabel = lv_label_create(ui_BrewScreen_modeSwitch);
+    // Let the label auto-size vertically so flex-align CENTER lines up the
+    // glyph baseline with the neighbouring 24pt weightLabel. A fixed 24px
+    // height combined with a 14pt font left empty space at the top and the
+    // glyph sat ~5px lower than "0.0g" in the pill.
     lv_obj_set_width(ui_BrewScreen_batteryLabel, LV_SIZE_CONTENT);
-    lv_obj_set_height(ui_BrewScreen_batteryLabel, 24);
+    lv_obj_set_height(ui_BrewScreen_batteryLabel, LV_SIZE_CONTENT);
     lv_obj_set_align(ui_BrewScreen_batteryLabel, LV_ALIGN_CENTER);
     lv_label_set_text(ui_BrewScreen_batteryLabel, "");
     lv_obj_add_flag(ui_BrewScreen_batteryLabel, LV_OBJ_FLAG_HIDDEN);
@@ -299,7 +303,9 @@ void ui_BrewScreen_screen_init(void) {
     ui_object_set_themeable_style_property(ui_BrewScreen_batteryLabel, LV_PART_MAIN | LV_STATE_DEFAULT, LV_STYLE_TEXT_OPA,
                                            _ui_theme_alpha_NiceWhite);
     lv_obj_set_style_text_align(ui_BrewScreen_batteryLabel, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(ui_BrewScreen_batteryLabel, &lv_font_montserrat_14, LV_PART_MAIN | LV_STATE_DEFAULT);
+    // Montserrat 20 matches the 24pt weight's visual weight but stays
+    // subordinate, and both fonts' x-heights line up under flex centering.
+    lv_obj_set_style_text_font(ui_BrewScreen_batteryLabel, &lv_font_montserrat_20, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_BrewScreen_profileInfo = lv_obj_create(ui_BrewScreen_controlContainer);
     lv_obj_remove_style_all(ui_BrewScreen_profileInfo);
