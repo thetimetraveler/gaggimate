@@ -38,13 +38,22 @@ jobs:
       - name: Write version
         run: |
           mkdir -p out
-          # Delete the rolling tags so git describe falls back to a
-          # semver-style upstream tag (e.g. v1.8.0 -> "v1.8.0-N-gSHA").
-          # The OTA parser in lib/OTA/src/semver_extensions.cpp splits
-          # on '.' and crashes on strings without any dots.
+          # Semver ordering: "v1.8.0-anything" is LESS than "v1.8.0", so using
+          # raw `git describe` would make the fork's version sort below the
+          # controller's stock release (and disable Update Controller in the
+          # UI). Bump the patch so the fork's semver beats upstream's.
           git tag -d fork-nightly 2>/dev/null || true
           git tag -d nightly 2>/dev/null || true
-          (git describe --tags --dirty 2>/dev/null || echo "v0.0.0-fork") > out/version.txt
+          BASE=$(git describe --tags --dirty --exclude=nightly --exclude=fork-nightly 2>/dev/null || echo "v0.0.0")
+          if [[ "$BASE" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+            M=${BASH_REMATCH[1]}; N=${BASH_REMATCH[2]}; P=${BASH_REMATCH[3]}
+          else
+            M=0; N=0; P=0
+          fi
+          PBUMP=$((P + 1))
+          COMMITS=$(git rev-list --count HEAD)
+          SHA=$(git rev-parse --short HEAD)
+          echo "v${M}.${N}.${PBUMP}-fork.${COMMITS}-g${SHA}" > out/version.txt
           cat out/version.txt
       - name: Build web UI (SPIFFS source)
         run: ./scripts/build_spiffs.sh
