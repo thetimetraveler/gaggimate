@@ -121,6 +121,9 @@ class DefaultUI {
     int pressureScaling = DEFAULT_PRESSURE_SCALING;
     int heatingFlash = 0;
     double bluetoothWeight = 0.0;
+    // Scale battery percentage, 0-100; 255 = unknown / no report / disconnected.
+    // Fed by scale:battery:change events and reset on scale disconnect.
+    uint8_t scaleBatteryPct = 255;
     BrewScreenState brewScreenState = BrewScreenState::Brew;
 
     int profileDirty = 0;

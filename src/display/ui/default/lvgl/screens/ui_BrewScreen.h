@@ -27,6 +27,7 @@ extern void ui_event_BrewScreen_modeSwitch(lv_event_t *e);
 extern lv_obj_t *ui_BrewScreen_modeSwitch;
 extern lv_obj_t *ui_BrewScreen_volumetricButton;
 extern lv_obj_t *ui_BrewScreen_weightLabel;
+extern lv_obj_t *ui_BrewScreen_batteryLabel;
 extern lv_obj_t *ui_BrewScreen_profileInfo;
 extern lv_obj_t *ui_BrewScreen_Label1;
 extern lv_obj_t *ui_BrewScreen_Container3;

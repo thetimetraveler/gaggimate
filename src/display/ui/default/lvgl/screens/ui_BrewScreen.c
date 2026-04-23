@@ -21,6 +21,7 @@ lv_obj_t *ui_BrewScreen_controlContainer = NULL;
 lv_obj_t *ui_BrewScreen_modeSwitch = NULL;
 lv_obj_t *ui_BrewScreen_volumetricButton = NULL;
 lv_obj_t *ui_BrewScreen_weightLabel = NULL;
+lv_obj_t *ui_BrewScreen_batteryLabel = NULL;
 lv_obj_t *ui_BrewScreen_profileInfo = NULL;
 lv_obj_t *ui_BrewScreen_Label1 = NULL;
 lv_obj_t *ui_BrewScreen_Container3 = NULL;
@@ -283,6 +284,22 @@ void ui_BrewScreen_screen_init(void) {
                                            _ui_theme_alpha_NiceWhite);
     lv_obj_set_style_text_align(ui_BrewScreen_weightLabel, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(ui_BrewScreen_weightLabel, &lv_font_montserrat_24, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    // Scale battery indicator — sibling of ui_BrewScreen_weightLabel inside
+    // the same modeSwitch flex pill. DefaultUI drives visibility/color/text
+    // via an effect; starts hidden + empty so it doesn't flash at init time.
+    ui_BrewScreen_batteryLabel = lv_label_create(ui_BrewScreen_modeSwitch);
+    lv_obj_set_width(ui_BrewScreen_batteryLabel, LV_SIZE_CONTENT);
+    lv_obj_set_height(ui_BrewScreen_batteryLabel, 24);
+    lv_obj_set_align(ui_BrewScreen_batteryLabel, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_BrewScreen_batteryLabel, "");
+    lv_obj_add_flag(ui_BrewScreen_batteryLabel, LV_OBJ_FLAG_HIDDEN);
+    ui_object_set_themeable_style_property(ui_BrewScreen_batteryLabel, LV_PART_MAIN | LV_STATE_DEFAULT, LV_STYLE_TEXT_COLOR,
+                                           _ui_theme_color_NiceWhite);
+    ui_object_set_themeable_style_property(ui_BrewScreen_batteryLabel, LV_PART_MAIN | LV_STATE_DEFAULT, LV_STYLE_TEXT_OPA,
+                                           _ui_theme_alpha_NiceWhite);
+    lv_obj_set_style_text_align(ui_BrewScreen_batteryLabel, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui_BrewScreen_batteryLabel, &lv_font_montserrat_14, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_BrewScreen_profileInfo = lv_obj_create(ui_BrewScreen_controlContainer);
     lv_obj_remove_style_all(ui_BrewScreen_profileInfo);
@@ -572,6 +589,7 @@ void ui_BrewScreen_screen_destroy(void) {
     ui_BrewScreen_modeSwitch = NULL;
     ui_BrewScreen_volumetricButton = NULL;
     ui_BrewScreen_weightLabel = NULL;
+    ui_BrewScreen_batteryLabel = NULL;
     ui_BrewScreen_profileInfo = NULL;
     ui_BrewScreen_Label1 = NULL;
     ui_BrewScreen_Container3 = NULL;
