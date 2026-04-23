@@ -1,0 +1,82 @@
+on:
+  push:
+    branches:
+      - "fork/main"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+name: Build Fork Release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-tags: true
+          fetch-depth: 0
+          submodules: 'recursive'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio/.cache
+          key: ${{ runner.os }}-pio
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install PlatformIO Core
+        run: pip install --upgrade platformio
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+      - name: Write version
+        run: |
+          mkdir -p out
+          (git describe --tags --dirty 2>/dev/null || echo "fork-nightly") > out/version.txt
+          cat out/version.txt
+      - name: Build web UI (SPIFFS source)
+        run: ./scripts/build_spiffs.sh
+      - name: Build controller
+        run: |
+          pio run -e controller
+          cp .pio/build/controller/firmware.bin out/board-firmware.bin
+          cp .pio/build/controller/partitions.bin out/board-partitions.bin
+          cp .pio/build/controller/bootloader.bin out/board-bootloader.bin
+      - name: Build display filesystem
+        run: |
+          pio run -t buildfs -e display
+          cp .pio/build/display/spiffs.bin out/display-filesystem.bin
+          cp .pio/build/display/spiffs.bin out/display-headless-filesystem.bin
+      - name: Build display
+        run: |
+          pio run -e display
+          cp .pio/build/display/firmware.bin out/display-firmware.bin
+          cp .pio/build/display/partitions.bin out/display-partitions.bin
+          cp .pio/build/display/bootloader.bin out/display-bootloader.bin
+      - name: Build display-headless
+        run: |
+          pio run -e display-headless
+          cp .pio/build/display-headless/firmware.bin out/display-headless-firmware.bin
+          cp .pio/build/display-headless/partitions.bin out/display-headless-partitions.bin
+          cp .pio/build/display-headless/bootloader.bin out/display-headless-bootloader.bin
+      - name: Publish fork-nightly release
+        uses: andelf/nightly-release@c5ed4bdb7c1da04a4fa1e40bc5e67306f682563b
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: fork-nightly
+          name: 'Fork Nightly $$'
+          prerelease: true
+          body: |
+            Automated fork build of thetimetraveler/gaggimate combining upstream/master with in-flight feature branches.
+
+            Point the display's **Custom** OTA channel at this release to receive updates wirelessly:
+            `https://github.com/thetimetraveler/gaggimate/releases/tag/fork-nightly`
+          files: |
+            out/*
