@@ -261,6 +261,9 @@ void ui_BrewScreen_screen_init(void) {
 
     ui_BrewScreen_volumetricButton = lv_img_create(ui_BrewScreen_modeSwitch);
     lv_img_set_src(ui_BrewScreen_volumetricButton, &ui_img_1424216268);
+    // Shrink the scale icon to ~65% so the battery label can stack below it
+    // inside the modeSwitch pill without running into the weight readout.
+    lv_img_set_zoom(ui_BrewScreen_volumetricButton, 166); // 256 = 1.0x
     lv_obj_set_width(ui_BrewScreen_volumetricButton, LV_SIZE_CONTENT);  /// 1
     lv_obj_set_height(ui_BrewScreen_volumetricButton, LV_SIZE_CONTENT); /// 1
     lv_obj_set_x(ui_BrewScreen_volumetricButton, -29);
@@ -289,13 +292,14 @@ void ui_BrewScreen_screen_init(void) {
     // the same modeSwitch flex pill. DefaultUI drives visibility/color/text
     // via an effect; starts hidden + empty so it doesn't flash at init time.
     ui_BrewScreen_batteryLabel = lv_label_create(ui_BrewScreen_modeSwitch);
-    // Let the label auto-size vertically so flex-align CENTER lines up the
-    // glyph baseline with the neighbouring 24pt weightLabel. A fixed 24px
-    // height combined with a 14pt font left empty space at the top and the
-    // glyph sat ~5px lower than "0.0g" in the pill.
+    // IGNORE_LAYOUT removes the battery label from the modeSwitch flex row so
+    // the row remains [scaleIcon, weightLabel] and the weight readout doesn't
+    // get shoved sideways. The label is then absolutely positioned under the
+    // scale icon in DefaultUI's effect via lv_obj_align_to() so it tracks the
+    // icon's layout-decided position each frame.
     lv_obj_set_width(ui_BrewScreen_batteryLabel, LV_SIZE_CONTENT);
     lv_obj_set_height(ui_BrewScreen_batteryLabel, LV_SIZE_CONTENT);
-    lv_obj_set_align(ui_BrewScreen_batteryLabel, LV_ALIGN_CENTER);
+    lv_obj_add_flag(ui_BrewScreen_batteryLabel, LV_OBJ_FLAG_IGNORE_LAYOUT);
     lv_label_set_text(ui_BrewScreen_batteryLabel, "");
     lv_obj_add_flag(ui_BrewScreen_batteryLabel, LV_OBJ_FLAG_HIDDEN);
     ui_object_set_themeable_style_property(ui_BrewScreen_batteryLabel, LV_PART_MAIN | LV_STATE_DEFAULT, LV_STYLE_TEXT_COLOR,
