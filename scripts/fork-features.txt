@@ -7,7 +7,12 @@
 feature/fork-infra
 reliability/assorted-fixes
 fix/scale-tare-confirmation
-fix/bookoo-complete
+# fix/bookoo-subscribe-order branches off fix/bookoo-complete and adds the
+# CCCD-subscribe-before-start-command fix needed for Bookoo scales to
+# actually emit weight notifications. Supersedes fix/bookoo-complete for
+# the fork; when upstream PR #671 merges and you rebase this fix on top,
+# swap back to fix/bookoo-complete + the stand-alone subscribe-order PR.
+fix/bookoo-subscribe-order
 schema/improve-profile-documentation
 
 # Combines fix/brew-tune-improvements + reliability/predictive-window-eviction
