@@ -99,12 +99,19 @@ export function OTA() {
       setSubmitting(true);
       const form = formRef.current;
       const formData = new FormData(form);
-      apiService.send({
+      // Only include customOTAUrl when the input is actually in the form
+      // (i.e. the user is on the "custom" channel). Otherwise we'd clobber
+      // the stored URL to empty whenever the user saves on latest/nightly.
+      const payload = {
         tp: 'req:ota-settings',
         update: true,
         channel: formData.get('channel'),
-        customOTAUrl: formData.get('customOTAUrl') || '',
-      });
+      };
+      const customUrl = formData.get('customOTAUrl');
+      if (customUrl !== null) {
+        payload.customOTAUrl = customUrl;
+      }
+      apiService.send(payload);
       setSubmitting(true);
     },
     [setFormData, formRef],
@@ -193,7 +200,7 @@ export function OTA() {
                     name='customOTAUrl'
                     className='input input-bordered w-full'
                     defaultValue={formData.customOTAUrl || ''}
-                    placeholder='https://github.com/&lt;owner&gt;/gaggimate/releases/tag/fork-nightly'
+                    placeholder={'https://github.com/<owner>/gaggimate/releases/tag/fork-nightly'}
                   />
                   <div className='alert alert-warning'>
                     <span>
