@@ -314,9 +314,14 @@ void BLEScalePlugin::establishConnection() {
 }
 
 void BLEScalePlugin::onMeasurement(float value) const {
+    onMeasurementEnterCount++;
+    lastOnMeasurementMs = millis();
+    lastWeightSeen = value;
+
     // Rate limiting to prevent callback flooding
     unsigned long now = millis();
     if (now - lastMeasurementTime < MIN_MEASUREMENT_INTERVAL_MS) {
+        onMeasurementDropRateLimit++;
         return; // Drop measurement to prevent flooding
     }
     lastMeasurementTime = now;
@@ -328,11 +333,13 @@ void BLEScalePlugin::onMeasurement(float value) const {
 
     // Check if we're being destroyed or in an unsafe state
     if (!active) {
+        onMeasurementDropInactive++;
         return; // Don't process measurements when not active
     }
 
     // Validate the measurement value
     if (!isfinite(value) || value < -1000.0f || value > 10000.0f) {
+        onMeasurementDropInvalid++;
         ESP_LOGW("BLEScalePlugin", "Invalid measurement value: %f, ignoring", value);
         return;
     }
@@ -345,6 +352,7 @@ void BLEScalePlugin::onMeasurement(float value) const {
     // and disable volumetric routing so the remainder of the shot falls
     // through to time-based stop.
     if (scale != nullptr && scale->hasWeightUnit() && scale->getWeightUnit() == ScaleWeightUnit::OUNCE) {
+        onMeasurementDropOunce++;
         if (controller->isActive() && !warnedOunceMidBrew) {
             ESP_LOGW("BLEScalePlugin",
                      "Scale switched to oz mid-brew -- aborting volumetric, falling back to time stop");
@@ -357,6 +365,7 @@ void BLEScalePlugin::onMeasurement(float value) const {
         warnedOunceMidBrew = false;
     }
 
+    onMeasurementPassCount++;
     // Safe to call controller method
     controller->onVolumetricMeasurement(value, VolumetricMeasurementSource::BLUETOOTH);
 

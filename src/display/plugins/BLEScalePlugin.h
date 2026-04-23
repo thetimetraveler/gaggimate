@@ -90,6 +90,20 @@ class BLEScalePlugin : public Plugin {
     mutable unsigned long lastMeasurementTime = 0;
     static constexpr unsigned long MIN_MEASUREMENT_INTERVAL_MS = 10; // Max 100 measurements per second
 
+    // Debug counters (fork-only, read via /api/scales/debug). Help pin down
+    // whether weights are arriving at this layer or being dropped upstream
+    // in the Bookoo driver / NimBLE subscribe path.
+  public:
+    mutable uint32_t onMeasurementEnterCount = 0;   // every call to onMeasurement
+    mutable uint32_t onMeasurementPassCount = 0;    // passed every guard, forwarded to controller
+    mutable uint32_t onMeasurementDropRateLimit = 0;
+    mutable uint32_t onMeasurementDropInactive = 0;
+    mutable uint32_t onMeasurementDropInvalid = 0;
+    mutable uint32_t onMeasurementDropOunce = 0;
+    float lastWeightSeen = 0.0f;
+    unsigned long lastOnMeasurementMs = 0;
+  private:
+
     Controller *controller = nullptr;
     PluginManager *pluginManager = nullptr;
     RemoteScalesPluginRegistry *pluginRegistry = nullptr;
