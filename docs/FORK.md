@@ -38,10 +38,11 @@ git checkout -b feature/foo upstream/master
 
 ### A feature branch conflicts on merge
 
-1. Rebase the feature branch locally to absorb the conflict (preferred — keeps the branch PR-ready).
-2. Push the feature branch, rerun `sync-fork.sh --push`.
+Options in order of preference:
 
-Resolving on `fork/main` directly won't survive the next regen.
+1. **Rebase the feature branch locally** to absorb the conflict, if the feature genuinely depends on the other. Keeps the branch PR-ready; push it, rerun `sync-fork.sh --push`.
+2. **Create an integration branch** if two features overlap but neither depends on the other (e.g., both edit `predictive.h`). Branch from `upstream/master`, `git merge --no-ff` each feature, resolve the conflict once, push as `integration/<topic>`. Replace the individual feature lines in `scripts/fork-features.txt` with the integration branch. Re-run the `git merge --no-ff`s to rebuild the integration when either feature moves. Example in-tree: `integration/predictive-and-brew-tune`.
+3. **Resolve on `fork/main` directly** — won't survive the next regen, avoid.
 
 ### An upstream PR lands
 

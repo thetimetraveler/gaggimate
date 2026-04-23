@@ -6,8 +6,13 @@
 
 feature/fork-infra
 reliability/assorted-fixes
-reliability/predictive-window-eviction
 fix/scale-tare-confirmation
 fix/bookoo-complete
-fix/brew-tune-improvements
+
+# Combines fix/brew-tune-improvements + reliability/predictive-window-eviction
+# — they overlap in predictive.h. The integration branch carries a single
+# resolved merge so regens don't re-hit the conflict. Rebuild it if either
+# feature branch moves (see docs/FORK.md).
+integration/predictive-and-brew-tune
+
 feature/custom-ota-channel
