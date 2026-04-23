@@ -247,7 +247,7 @@ void ui_BrewScreen_screen_init(void) {
 
     ui_BrewScreen_modeSwitch = lv_obj_create(ui_BrewScreen_controlContainer);
     lv_obj_set_width(ui_BrewScreen_modeSwitch, 160);
-    lv_obj_set_height(ui_BrewScreen_modeSwitch, 50);
+    lv_obj_set_height(ui_BrewScreen_modeSwitch, 76); // was 50; expanded so the battery label can stack below the scale icon without being clipped
     lv_obj_set_align(ui_BrewScreen_modeSwitch, LV_ALIGN_CENTER);
     lv_obj_set_flex_flow(ui_BrewScreen_modeSwitch, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(ui_BrewScreen_modeSwitch, LV_FLEX_ALIGN_SPACE_AROUND, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
