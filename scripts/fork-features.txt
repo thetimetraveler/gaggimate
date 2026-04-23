@@ -7,7 +7,10 @@
 feature/fork-infra
 reliability/assorted-fixes
 fix/scale-tare-confirmation
-fix/bookoo-complete
+# Branches off fix/bookoo-complete and adds /api/scales/debug +
+# onMeasurement drop-counters for live diagnosis of brew-by-weight
+# not engaging. Revert to fix/bookoo-complete when root-caused.
+feature/scales-debug-endpoint
 schema/improve-profile-documentation
 
 # Combines fix/brew-tune-improvements + reliability/predictive-window-eviction
