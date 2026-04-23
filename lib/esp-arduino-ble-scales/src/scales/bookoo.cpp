@@ -184,7 +184,14 @@ bool BookooScales::decodeAndHandleNotification() {
     //   [0]    product id (0x03)
     //   [1]    message type (0x0B = weight)
     //   [2-4]  scale-internal timestamp (ms, 3 bytes unsigned)
-    //   [5]    weight unit (0x01 = ounce, 0x02 = gram)
+    //   [5]    weight unit (Bookoo Themis Ultra: 0x01 = gram, 0x02 = ounce —
+    //           INVERTED from the Bookoo Mini protocol doc. Empirically
+    //           verified via /api/scales/debug against a BOOKOO_SC_U: when the
+    //           scale's physical display reads "g", byte 5 is 0x01; when "oz",
+    //           byte 5 is 0x02. The Mini spec documents the opposite mapping,
+    //           so drivers that copied the Mini mapping get a false ounce
+    //           classification on every Ultra sample and Controller::
+    //           isVolumetricAvailable() refuses to engage volumetric.)
     //   [6]    weight sign ('+' = 0x2B, '-' = 0x2D)
     //   [7-9]  weight * 100 in grams (3 bytes unsigned)
     //   [10]   flow sign
@@ -204,8 +211,8 @@ bool BookooScales::decodeAndHandleNotification() {
 
     // Weight unit (byte 5).
     switch (dataBuffer[5]) {
-      case 0x01: RemoteScales::setWeightUnit(ScaleWeightUnit::OUNCE); break;
-      case 0x02: RemoteScales::setWeightUnit(ScaleWeightUnit::GRAM); break;
+      case 0x01: RemoteScales::setWeightUnit(ScaleWeightUnit::GRAM); break;
+      case 0x02: RemoteScales::setWeightUnit(ScaleWeightUnit::OUNCE); break;
       default:   RemoteScales::setWeightUnit(ScaleWeightUnit::UNKNOWN); break;
     }
 
