@@ -100,8 +100,8 @@ class BLEScalePlugin : public Plugin {
     mutable uint32_t onMeasurementDropInactive = 0;
     mutable uint32_t onMeasurementDropInvalid = 0;
     mutable uint32_t onMeasurementDropOunce = 0;
-    float lastWeightSeen = 0.0f;
-    unsigned long lastOnMeasurementMs = 0;
+    mutable float lastWeightSeen = 0.0f;
+    mutable unsigned long lastOnMeasurementMs = 0;
   private:
 
     Controller *controller = nullptr;
