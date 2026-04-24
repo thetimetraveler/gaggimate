@@ -16,7 +16,6 @@ src/display/ui/default/lvgl/project.info
 sdkconfig.display
 sdkconfig.display-headless
 sdkconfig.display-headless-8m
-sdkconfig.display-headless-4m
 sdkconfig.controller
 sdkconfig.defaults
 managed_components/

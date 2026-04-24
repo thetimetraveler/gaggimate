@@ -25,6 +25,11 @@ CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
 # 4 connections: display acts as central for BLE scales + peripheral for HomeKit.
 CONFIG_BT_NIMBLE_MAX_CONNECTIONS=4
 
+# Bump host task stack from 4096: continuous scale scanning drives the NimBLE
+# host callback context hot. 4 KB runs close to the high-water mark during
+# scan-complete bursts.
+CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE=5120
+
 # HKDF used by HomeSpan for HomeKit pairing key derivation.
 CONFIG_MBEDTLS_HKDF_C=y
 

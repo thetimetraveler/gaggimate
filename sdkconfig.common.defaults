@@ -1,6 +1,12 @@
 # Shared sdkconfig base for all dual-framework envs.
 # Applied as the first entry in SDKCONFIG_DEFAULTS; env-specific files follow
 # and override only what differs (MAX_CONNECTIONS, LWIP, nano-newlib).
+#
+# Workflow: pioarduino caches a merged sdkconfig.<env> at project root and
+# reuses it on subsequent builds. Edits to any .defaults file don't propagate
+# until that per-env file is regenerated. After editing, run:
+#   pio run -e <env> -t fullclean
+# else the build ignores your change and you will chase ghosts.
 
 CONFIG_IDF_TARGET="esp32s3"
 

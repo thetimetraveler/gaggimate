@@ -59,8 +59,6 @@ if framework_dir:
 # IDF uses container dirs (e.g. porting/nimble/include) not leaf dirs,
 # so a naive os.walk would add wrong paths and miss header resolution.
 _IDF_BT_NIMBLE_PATHS = [
-    # Target-specific controller API (esp32s3 uses esp32c3 BT controller ABI)
-    "bt/include/esp32c3/include",
     # Common BT
     "bt/common/osi/include",
     "bt/common/api/include/api",
@@ -101,6 +99,13 @@ _IDF_BT_NIMBLE_PATHS = [
     "bt/host/nimble/nimble/porting/npl/freertos/include",
     "bt/host/nimble/esp-hci/include",
 ]
+# Target-specific BT controller API. ESP32-S3 uses the esp32c3-family ABI;
+# other targets (S2, C6, H2, P4) would need a different subdir — gate by MCU
+# so the wrong header doesn't get pulled in on future ports.
+_mcu = env.subst("$BOARD_MCU")
+if _mcu in ("esp32s3", "esp32c3", "esp32c2"):
+    _IDF_BT_NIMBLE_PATHS.insert(0, "bt/include/esp32c3/include")
+
 idf_dir = platform.get_package_dir("framework-espidf")
 if idf_dir:
     components_dir = os.path.join(idf_dir, "components")
