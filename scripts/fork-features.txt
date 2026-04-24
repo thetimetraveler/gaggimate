@@ -20,3 +20,8 @@ schema/improve-profile-documentation
 integration/predictive-and-brew-tune
 
 feature/custom-ota-channel
+
+# Format-SD-Card button under System & Updates. Ships a WS handler +
+# destructive helper that wipes + re-mounts SD_MMC so a fresh card can
+# be laid down without pulling it out.
+feature/sd-format-button
