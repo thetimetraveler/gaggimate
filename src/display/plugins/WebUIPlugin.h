@@ -39,6 +39,9 @@ class WebUIPlugin : public Plugin {
     void handleAutotuneStart(uint32_t clientId, JsonDocument &request);
     void handleProfileRequest(uint32_t clientId, JsonDocument &request);
     void handleFlushStart(uint32_t clientId, JsonDocument &request);
+    void startSDCardFormat();
+    static void sdFormatTask(void *arg);
+    void emitFormatStatus(const char *status, const char *message = nullptr);
 
     // HTTP handlers
     void handleSettings(AsyncWebServerRequest *request) const;

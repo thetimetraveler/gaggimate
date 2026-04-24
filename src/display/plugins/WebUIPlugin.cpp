@@ -15,6 +15,9 @@
 #include <algorithm>
 #include <display/plugins/BLEScalePlugin.h>
 #include <display/plugins/ShotHistoryPlugin.h>
+#include <display/util/sd_format.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -346,6 +349,28 @@ void WebUIPlugin::handleWebSocketData(AsyncWebSocket *server, AsyncWebSocketClie
                     serializeJson(resp, buffer->get(), bufferSize);
                     client->text(buffer);
                     ShotHistory.startAsyncRebuild();
+                } else if (msgType == "req:sd:format") {
+                    JsonDocument resp;
+                    resp["tp"] = "res:sd:format";
+                    if (doc["rid"].is<const char *>()) {
+                        resp["rid"] = doc["rid"];
+                    }
+                    if (!controller->isSDCard()) {
+                        resp["ok"] = false;
+                        resp["msg"] = "No SD card mounted";
+                    } else if (controller->getMode() == MODE_BREW &&
+                               controller->getProcess() && controller->getProcess()->isActive()) {
+                        resp["ok"] = false;
+                        resp["msg"] = "Cannot format during an active brew";
+                    } else {
+                        resp["ok"] = true;
+                        resp["msg"] = "Format started";
+                        startSDCardFormat();
+                    }
+                    size_t bufferSize = measureJson(resp);
+                    auto *buffer = ws.makeBuffer(bufferSize);
+                    serializeJson(resp, buffer->get(), bufferSize);
+                    client->text(buffer);
                 } else if (msgType.startsWith("req:history")) {
                     JsonDocument resp;
                     ShotHistory.handleRequest(doc, resp);
@@ -846,4 +871,34 @@ void WebUIPlugin::handleCoreDumpDownload(AsyncWebServerRequest *request) {
     response->addHeader("Cache-Control", "no-cache");
 
     request->send(response);
+}
+
+void WebUIPlugin::emitFormatStatus(const char *status, const char *message) {
+    JsonDocument doc;
+    doc["tp"] = "evt:sd-format-progress";
+    doc["status"] = status;
+    if (message != nullptr) {
+        doc["msg"] = message;
+    }
+    ws.textAll(doc.as<String>());
+}
+
+void WebUIPlugin::sdFormatTask(void *arg) {
+    auto *self = static_cast<WebUIPlugin *>(arg);
+    self->emitFormatStatus("formatting");
+    gaggimate::sd::FormatResult result = gaggimate::sd::formatSDCard();
+    if (result == gaggimate::sd::FormatResult::Success) {
+        // After a fresh format, rebuild the shot-history index so the /h/
+        // directory exists and the endpoint doesn't 404.
+        ShotHistory.startAsyncRebuild();
+        self->emitFormatStatus("completed");
+    } else {
+        self->emitFormatStatus("error", gaggimate::sd::toString(result));
+    }
+    vTaskDelete(nullptr);
+}
+
+void WebUIPlugin::startSDCardFormat() {
+    emitFormatStatus("starting");
+    xTaskCreatePinnedToCore(&WebUIPlugin::sdFormatTask, "sd_format", 4096, this, 1, nullptr, 0);
 }

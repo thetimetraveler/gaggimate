@@ -83,6 +83,23 @@ export function OTA() {
       apiService.off('evt:history-rebuild-progress', listenerId);
     };
   }, [apiService]);
+
+  useEffect(() => {
+    const listenerId = apiService.on('evt:sd-format-progress', msg => {
+      setFormatStatus(msg.status || '');
+      if (msg.status === 'completed') {
+        setFormatting(false);
+        setFormatted(true);
+      } else if (msg.status === 'error') {
+        setFormatting(false);
+        setFormatError(msg.msg || 'Format failed');
+      }
+    });
+    return () => {
+      apiService.off('evt:sd-format-progress', listenerId);
+    };
+  }, [apiService]);
+
   useEffect(() => {
     setTimeout(() => {
       apiService.send({ tp: 'req:ota-settings' });
@@ -118,6 +135,22 @@ export function OTA() {
     setRebuilding(true);
     setRebuildProgress({ total: 0, current: 0, status: 'starting' });
     apiService.send({ tp: 'req:history:rebuild' });
+  }, [apiService]);
+
+  const [formatting, setFormatting] = useState(false);
+  const [formatted, setFormatted] = useState(false);
+  const [formatStatus, setFormatStatus] = useState('');
+  const [formatError, setFormatError] = useState('');
+  const onFormatSD = useCallback(async () => {
+    const ok = window.confirm(
+      'Format SD card?\n\nThis permanently erases every file on the card including all shot history. This action cannot be undone.',
+    );
+    if (!ok) return;
+    setFormatted(false);
+    setFormatError('');
+    setFormatting(true);
+    setFormatStatus('starting');
+    apiService.send({ tp: 'req:sd:format' });
   }, [apiService]);
 
   if (isLoading) {
@@ -330,6 +363,37 @@ export function OTA() {
               {rebuilt && (
                 <span className='text-success ml-2'>
                   <FontAwesomeIcon icon={faCheck}></FontAwesomeIcon>
+                </span>
+              )}
+            </button>
+            <button
+              type='button'
+              className='btn btn-outline btn-error'
+              onClick={onFormatSD}
+              disabled={formatting || formData.sdTotal === undefined}
+              title={
+                formData.sdTotal === undefined
+                  ? 'Insert an SD card first'
+                  : 'Erase everything on the SD card and lay down a fresh FAT filesystem'
+              }
+            >
+              Format SD Card
+              {formatting && (
+                <>
+                  <Spinner size={4} className='ml-2' />
+                  {formatStatus && (
+                    <span className='ml-2 text-xs'>{formatStatus}</span>
+                  )}
+                </>
+              )}
+              {formatted && (
+                <span className='text-success ml-2'>
+                  <FontAwesomeIcon icon={faCheck}></FontAwesomeIcon>
+                </span>
+              )}
+              {formatError && (
+                <span className='text-error ml-2 text-xs' title={formatError}>
+                  !
                 </span>
               )}
             </button>
