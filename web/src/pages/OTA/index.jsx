@@ -141,10 +141,11 @@ export function OTA() {
   const [formatted, setFormatted] = useState(false);
   const [formatStatus, setFormatStatus] = useState('');
   const [formatError, setFormatError] = useState('');
+  const formatTimeoutRef = useRef(null);
   const onFormatSD = useCallback(async () => {
     const mounted = formData.sdTotal !== undefined;
     const msg = mounted
-      ? 'Format SD card?\n\nThis permanently erases every file on the card including all shot history. This action cannot be undone.'
+      ? 'Format SD card?\n\nThis permanently erases every file on the card and reboots the device. This action cannot be undone.'
       : 'Attempt to mount + format the SD card?\n\nThe firmware does not currently see a mounted card. If a card is inserted, this will format it to FAT32 and reboot the device. Any data on the card will be erased.';
     const ok = window.confirm(msg);
     if (!ok) return;
@@ -153,7 +154,25 @@ export function OTA() {
     setFormatting(true);
     setFormatStatus('starting');
     apiService.send({ tp: 'req:sd:format' });
-  }, [apiService]);
+    // Safety net: if the task stack-overflows or the device WDT-reboots, the
+    // WS never emits completed/error and the button would stay disabled
+    // until a page reload. 60 s is generous — a real f_mkfs on a 32 GB card
+    // finishes in well under 30 s.
+    if (formatTimeoutRef.current) clearTimeout(formatTimeoutRef.current);
+    formatTimeoutRef.current = setTimeout(() => {
+      setFormatting(false);
+      setFormatError('Timed out — the device may have rebooted. Check if an SD card is now detected and try again if needed.');
+    }, 60000);
+  }, [apiService, formData.sdTotal]);
+  // Clear timeout when format completes/errors — success paths reboot the
+  // device so the timeout firing post-reboot is harmless, but error paths
+  // should release the button immediately.
+  useEffect(() => {
+    if (!formatting && formatTimeoutRef.current) {
+      clearTimeout(formatTimeoutRef.current);
+      formatTimeoutRef.current = null;
+    }
+  }, [formatting]);
 
   if (isLoading) {
     return (

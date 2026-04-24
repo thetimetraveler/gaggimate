@@ -8,6 +8,7 @@
 #include "GitHubOTA.h"
 #include <ArduinoJson.h>
 #include <ESPAsyncWebServer.h>
+#include <atomic>
 #include <display/core/Plugin.h>
 
 constexpr size_t UPDATE_CHECK_INTERVAL = 5 * 60 * 1000;
@@ -73,6 +74,11 @@ class WebUIPlugin : public Plugin {
     bool serverRunning = false;
     String updateComponent = "";
     float currentBluetoothWeight = 0.0f;
+    // Set while the SD format task is alive. Gates duplicate task spawns from
+    // double-click / multi-tab. The task itself flips this back to false on
+    // completion (or in the reboot-and-never-return case, the reboot clears
+    // process state).
+    std::atomic<bool> sdFormatInProgress{false};
 };
 
 #endif // WEBUIPLUGIN_H
