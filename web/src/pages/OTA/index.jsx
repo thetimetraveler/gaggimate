@@ -142,9 +142,11 @@ export function OTA() {
   const [formatStatus, setFormatStatus] = useState('');
   const [formatError, setFormatError] = useState('');
   const onFormatSD = useCallback(async () => {
-    const ok = window.confirm(
-      'Format SD card?\n\nThis permanently erases every file on the card including all shot history. This action cannot be undone.',
-    );
+    const mounted = formData.sdTotal !== undefined;
+    const msg = mounted
+      ? 'Format SD card?\n\nThis permanently erases every file on the card including all shot history. This action cannot be undone.'
+      : 'Attempt to mount + format the SD card?\n\nThe firmware does not currently see a mounted card. If a card is inserted, this will format it to FAT32 and reboot the device. Any data on the card will be erased.';
+    const ok = window.confirm(msg);
     if (!ok) return;
     setFormatted(false);
     setFormatError('');
@@ -370,10 +372,10 @@ export function OTA() {
               type='button'
               className='btn btn-outline btn-error'
               onClick={onFormatSD}
-              disabled={formatting || formData.sdTotal === undefined}
+              disabled={formatting}
               title={
                 formData.sdTotal === undefined
-                  ? 'Insert an SD card first'
+                  ? 'Attempts to format + mount. Use this when a card is physically inserted but not detected (wrong filesystem). Device will reboot on success.'
                   : 'Erase everything on the SD card and lay down a fresh FAT filesystem'
               }
             >

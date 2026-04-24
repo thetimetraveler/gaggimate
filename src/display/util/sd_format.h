@@ -5,18 +5,22 @@
 namespace gaggimate::sd {
 
 enum class FormatResult {
-    Success,
-    NoCardMounted,
-    WipeFailed,
-    RemountFailed,
+    Success,        // freshly mounted + formatted (card was not mounted before)
+    MountedSuccess, // wiped and reformatted an already-mounted card
+    WipeFailed,     // sector-level write failed
+    RemountFailed,  // SD_MMC.begin() failed — card missing, bad contacts, wrong pins, etc.
 };
 
 const char *toString(FormatResult r);
 
-// Destructive. Wipes the first N sectors to invalidate the filesystem, then
-// re-mounts SD_MMC with format_if_mount_failed=true so the IDF stack lays down
-// a fresh FAT partition. Caller is responsible for gating the call (card
-// detected, no active brew, user confirmation).
-FormatResult formatSDCard();
+// Destructive. Two code paths:
+//   currentlyMounted=true  → wipe first 16 sectors, end(), begin(format=true)
+//                            to force a fresh FAT. Returns MountedSuccess.
+//   currentlyMounted=false → begin(format=true) directly — mounts and formats
+//                            a card whose boot-time FS the driver couldn't
+//                            read (e.g. exFAT, NTFS, uninitialized). Returns
+//                            Success.
+// Caller guards for user confirmation + active-brew.
+FormatResult formatSDCard(bool currentlyMounted);
 
 } // namespace gaggimate::sd

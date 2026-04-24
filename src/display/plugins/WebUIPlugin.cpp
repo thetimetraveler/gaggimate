@@ -355,11 +355,11 @@ void WebUIPlugin::handleWebSocketData(AsyncWebSocket *server, AsyncWebSocketClie
                     if (doc["rid"].is<const char *>()) {
                         resp["rid"] = doc["rid"];
                     }
-                    if (!controller->isSDCard()) {
-                        resp["ok"] = false;
-                        resp["msg"] = "No SD card mounted";
-                    } else if (controller->getMode() == MODE_BREW &&
-                               controller->getProcess() && controller->getProcess()->isActive()) {
+                    // Deliberately allow format even when isSDCard() is
+                    // false — that's the recovery path for a card whose FS
+                    // the driver couldn't read at boot (exFAT, NTFS, raw).
+                    if (controller->getMode() == MODE_BREW &&
+                        controller->getProcess() && controller->getProcess()->isActive()) {
                         resp["ok"] = false;
                         resp["msg"] = "Cannot format during an active brew";
                     } else {
@@ -885,13 +885,25 @@ void WebUIPlugin::emitFormatStatus(const char *status, const char *message) {
 
 void WebUIPlugin::sdFormatTask(void *arg) {
     auto *self = static_cast<WebUIPlugin *>(arg);
+    const bool wasMounted = self->controller->isSDCard();
     self->emitFormatStatus("formatting");
-    gaggimate::sd::FormatResult result = gaggimate::sd::formatSDCard();
-    if (result == gaggimate::sd::FormatResult::Success) {
-        // After a fresh format, rebuild the shot-history index so the /h/
-        // directory exists and the endpoint doesn't 404.
+    gaggimate::sd::FormatResult result = gaggimate::sd::formatSDCard(wasMounted);
+
+    if (result == gaggimate::sd::FormatResult::MountedSuccess) {
+        // Card was already mounted, we wiped + reformatted it. ShotHistory's
+        // fs pointer still points at the SD_MMC global so we can reseed the
+        // index in-place. No reboot needed.
         ShotHistory.startAsyncRebuild();
         self->emitFormatStatus("completed");
+    } else if (result == gaggimate::sd::FormatResult::Success) {
+        // Card was NOT mounted at boot. Plugins initialized pointing at
+        // SPIFFS. Reboot so every plugin re-runs setup() with the now-
+        // detected SD card, otherwise ShotHistory / ProfileManager / etc.
+        // keep writing to SPIFFS and the user never sees their shots.
+        self->emitFormatStatus("rebooting");
+        vTaskDelay(pdMS_TO_TICKS(800)); // give the WS frame time to flush
+        ESP.restart();
+        // unreachable
     } else {
         self->emitFormatStatus("error", gaggimate::sd::toString(result));
     }
