@@ -24,6 +24,9 @@ dependencies.lock
 # pioarduino dual-framework hybrid-compile scaffold (auto-generated)
 .dummy/
 
+# Serial/device monitor captures
+logs/
+
 # Editor / agent workspaces
 .serena/
 .claude/

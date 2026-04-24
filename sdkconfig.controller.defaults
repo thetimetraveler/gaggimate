@@ -1,0 +1,9 @@
+# Controller-env sdkconfig overrides (layered on top of sdkconfig.common.defaults).
+# Controller is BLE peripheral-only (display is the central). No WiFi network
+# stacks, no HomeKit, no WebServer — no LWIP tuning or HKDF needed.
+
+# 1 connection: single display consumer.
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
+
+# Nano newlib safe here: controller has no GNU %m scanf users.
+CONFIG_LIBC_NEWLIB_NANO_FORMAT=y

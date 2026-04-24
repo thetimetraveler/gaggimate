@@ -1,0 +1,8 @@
+dependencies:
+  # Pure-IDF C++ wrapper for NimBLE — same h2zero 2.x API as NimBLE-Arduino
+  # but links directly against IDF's bt component. Required for ESP32-P4 and
+  # esp_hosted-mcu support. Replaces h2zero/NimBLE-Arduino for dual-framework
+  # envs (display, display-headless, display-headless-8m, controller).
+  # display-headless-4m keeps NimBLE-Arduino (pure-arduino, no IDF component).
+  h2zero/esp-nimble-cpp:
+    version: ">=2.0.0"
