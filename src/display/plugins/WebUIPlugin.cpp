@@ -250,6 +250,10 @@ void WebUIPlugin::setupServer() {
         doc["isFlowSmoothingOn"] = BLEScales.isFlowSmoothingOn();
         doc["flowSmoothingDisableAttempts"] = BLEScales.getFlowSmoothingDisableAttempts();
         doc["flowSmoothingPacketsSeen"] = BLEScales.getFlowSmoothingPacketsSeen();
+        // True iff the retry loop gave up without confirmation. If this is
+        // ever true, vf is being delivered with EMA lag and the firmware-
+        // side projection will run long.
+        doc["flowSmoothingDisableExhausted"] = BLEScales.hasFlowSmoothingDisableExhausted();
         AsyncResponseStream *response = request->beginResponseStream("application/json");
         serializeJson(doc, *response);
         request->send(response);

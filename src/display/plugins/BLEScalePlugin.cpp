@@ -164,6 +164,17 @@ void BLEScalePlugin::update() {
             // Poll slow-changing metadata (battery, unit). Flow rate is
             // emitted inline with each weight measurement, not polled here.
             pollScaleMetadata();
+            // One-shot signal when the Bookoo retry loop exhausts without
+            // the scale confirming smoothing off. Lets shot history /
+            // future UI flag affected sessions instead of users having
+            // to curl /api/scales/debug to discover the failure.
+            if (!firedFlowSmoothingDisableFailedEvent && scale->hasFlowSmoothingDisableExhausted()) {
+                firedFlowSmoothingDisableFailedEvent = true;
+                ESP_LOGW("BLEScalePlugin", "Scale flow-smoothing disable exhausted retries; vf will be lagged");
+                if (pluginManager != nullptr) {
+                    pluginManager->trigger("scale:flow-smoothing:disable-failed");
+                }
+            }
         }
     } else if (controller->getSettings().getSavedScale() != "" && scanner != nullptr) {
         // Protected scanner access with null checks
@@ -223,6 +234,7 @@ void BLEScalePlugin::disconnect() {
         lastBatteryLevel = REMOTE_SCALES_BATTERY_UNKNOWN;
         lastWeightUnit = ScaleWeightUnit::UNKNOWN;
         warnedOunceMidBrew = false;
+        firedFlowSmoothingDisableFailedEvent = false;
     }
 }
 

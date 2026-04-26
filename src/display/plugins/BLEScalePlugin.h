@@ -74,6 +74,9 @@ class BLEScalePlugin : public Plugin {
     bool getFlowSmoothingPacketsSeen() const {
         return scale != nullptr && scale->getFlowSmoothingPacketsSeen();
     }
+    bool hasFlowSmoothingDisableExhausted() const {
+        return scale != nullptr && scale->hasFlowSmoothingDisableExhausted();
+    }
 
   private:
     void update();
@@ -98,6 +101,10 @@ class BLEScalePlugin : public Plugin {
     // transition into ounces, not once per sample at ~10 Hz. Reset on
     // disconnect and when the unit returns to grams.
     mutable bool warnedOunceMidBrew = false;
+
+    // Latch so the smoothing-disable-failed event fires once per connection
+    // when the driver gives up retrying cmd 0x08 0x00. Reset on disconnect.
+    bool firedFlowSmoothingDisableFailedEvent = false;
 
     // Rate limiting for callbacks
     mutable unsigned long lastMeasurementTime = 0;

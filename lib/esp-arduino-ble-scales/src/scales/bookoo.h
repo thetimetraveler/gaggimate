@@ -60,6 +60,14 @@ public:
   // construction-time default).
   uint8_t getFlowSmoothingDisableAttempts() const override { return flowSmoothingDisableAttempts_; }
   bool getFlowSmoothingPacketsSeen() const override { return flowSmoothingPacketsSeen_; }
+  // Retry budget exhausted with the scale still reporting smoothing on.
+  // Requires packetsSeen so we don't latch on the construction-time default
+  // of lastFlowSmoothingOn_=false.
+  bool hasFlowSmoothingDisableExhausted() const override {
+      return flowSmoothingPacketsSeen_
+          && lastFlowSmoothingOn_
+          && flowSmoothingDisableAttempts_ >= MAX_FLOW_SMOOTHING_DISABLE_ATTEMPTS;
+  }
 
   // Ultra-only commands. No-op on Mini scales. See the Bookoo Ultra protocol
   // spec for byte-level details:
@@ -92,6 +100,10 @@ private:
   const bool isUltra_;
 
   // Mirrors byte 17 of the most recently parsed weight notification.
+  // mutable here is for const-correctness on isFlowSmoothingOn() — NOT a
+  // thread-safety claim. Cross-task reads (NimBLE notify task vs. main
+  // loop) are safe in practice on bool/uint8 (no torn reads on 32-bit
+  // ESP32) but if we ever care, switch to std::atomic.
   mutable bool lastFlowSmoothingOn_ = false;
 
   // Smoothing-disable retry state. We send the disable command at connect,

@@ -71,6 +71,11 @@ public:
   // 17 reads off because we never read a packet yet".
   virtual uint8_t getFlowSmoothingDisableAttempts() const { return 0; }
   virtual bool getFlowSmoothingPacketsSeen() const { return false; }
+  // True when the driver burned through its retry budget without the
+  // peripheral confirming smoothing off. BLEScalePlugin watches this edge
+  // and emits a single "scale:flow-smoothing:disable-failed" event so the
+  // shot-history layer / UI can flag affected sessions.
+  virtual bool hasFlowSmoothingDisableExhausted() const { return false; }
 
   void setWeightUpdatedCallback(void (*callback)(float), bool onlyChanges = false);
   void setLogCallback(LogCallback logCallback) { this->logCallback = logCallback; }
