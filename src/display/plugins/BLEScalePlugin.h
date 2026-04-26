@@ -65,6 +65,15 @@ class BLEScalePlugin : public Plugin {
     // can verify our disableScaleSmoothing() command took. Drivers that don't
     // track this return false by default (RemoteScales base impl).
     bool isFlowSmoothingOn() const { return scale != nullptr && scale->isFlowSmoothingOn(); }
+    // Retry diagnostics: how many disable commands we've sent on the current
+    // connection, and whether at least one weight notification has been
+    // parsed (without which isFlowSmoothingOn() is just the default).
+    uint8_t getFlowSmoothingDisableAttempts() const {
+        return scale != nullptr ? scale->getFlowSmoothingDisableAttempts() : 0;
+    }
+    bool getFlowSmoothingPacketsSeen() const {
+        return scale != nullptr && scale->getFlowSmoothingPacketsSeen();
+    }
 
   private:
     void update();

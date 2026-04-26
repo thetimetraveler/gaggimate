@@ -64,6 +64,14 @@ public:
   // disableScaleSmoothing() were honored by the peripheral.
   virtual bool isFlowSmoothingOn() const { return false; }
 
+  // Diagnostics for the smoothing-disable retry path. Drivers that send a
+  // smoothing-disable command at connect (and retry until the peripheral
+  // actually flips the bit) override these. Lets the debug endpoint
+  // distinguish "byte 17 reads off because we confirmed it off" from "byte
+  // 17 reads off because we never read a packet yet".
+  virtual uint8_t getFlowSmoothingDisableAttempts() const { return 0; }
+  virtual bool getFlowSmoothingPacketsSeen() const { return false; }
+
   void setWeightUpdatedCallback(void (*callback)(float), bool onlyChanges = false);
   void setLogCallback(LogCallback logCallback) { this->logCallback = logCallback; }
 

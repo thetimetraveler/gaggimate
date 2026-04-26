@@ -244,6 +244,12 @@ void WebUIPlugin::setupServer() {
             BLEScales.lastOnMeasurementMs == 0 ? -1 : static_cast<long>(millis() - BLEScales.lastOnMeasurementMs);
         doc["isVolumetricAvailable"] = controller->isVolumetricAvailable();
         doc["isBluetoothScaleHealthy"] = controller->isBluetoothScaleHealthy();
+        // Smoothing-disable verification (Bookoo only — other drivers report
+        // 0/false). isFlowSmoothingOn is meaningful only when packetsSeen is
+        // true; before the first weight packet the field is just the default.
+        doc["isFlowSmoothingOn"] = BLEScales.isFlowSmoothingOn();
+        doc["flowSmoothingDisableAttempts"] = BLEScales.getFlowSmoothingDisableAttempts();
+        doc["flowSmoothingPacketsSeen"] = BLEScales.getFlowSmoothingPacketsSeen();
         AsyncResponseStream *response = request->beginResponseStream("application/json");
         serializeJson(doc, *response);
         request->send(response);

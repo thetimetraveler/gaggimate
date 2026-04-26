@@ -53,6 +53,14 @@ public:
   // notification is parsed.
   bool isFlowSmoothingOn() const override { return lastFlowSmoothingOn_; }
 
+  // Diagnostics for the smoothing-disable retry loop driven from update().
+  // attempts: how many times we've sent cmd 0x08 0x00 since the most recent
+  // connect(). packetsSeen: whether at least one weight notification has been
+  // parsed (so the value of isFlowSmoothingOn() is meaningful, not the
+  // construction-time default).
+  uint8_t getFlowSmoothingDisableAttempts() const override { return flowSmoothingDisableAttempts_; }
+  bool getFlowSmoothingPacketsSeen() const override { return flowSmoothingPacketsSeen_; }
+
   // Ultra-only commands. No-op on Mini scales. See the Bookoo Ultra protocol
   // spec for byte-level details:
   //   https://github.com/BooKooCode/OpenSource/blob/main/bookoo_ultra_scale/protocols.md
@@ -85,6 +93,20 @@ private:
 
   // Mirrors byte 17 of the most recently parsed weight notification.
   mutable bool lastFlowSmoothingOn_ = false;
+
+  // Smoothing-disable retry state. We send the disable command at connect,
+  // but on some Bookoo firmware revisions it doesn't take on the first try
+  // (notifications start before the command is processed, ordering bug, etc.).
+  // The scale broadcasts its real state in byte 17 of every weight packet,
+  // so update() polls and re-issues the command until it reads off or we
+  // hit MAX_FLOW_SMOOTHING_DISABLE_ATTEMPTS.
+  static constexpr uint32_t FLOW_SMOOTHING_DISABLE_RETRY_MS = 2000;
+  static constexpr uint8_t MAX_FLOW_SMOOTHING_DISABLE_ATTEMPTS = 6;
+  uint32_t lastFlowSmoothingDisableMs_ = 0;
+  uint8_t flowSmoothingDisableAttempts_ = 0;
+  bool flowSmoothingPacketsSeen_ = false;
+
+  void maybeRetrySmoothingDisable();
 
   NimBLERemoteService* service;
   NimBLERemoteCharacteristic* weightCharacteristic;

@@ -28,6 +28,13 @@ bool BookooScales::connect() {
     return true;
   }
 
+  // Reset smoothing-disable tracking so a reconnect starts with a fresh retry
+  // budget and doesn't act on stale byte-17 reads from the previous session.
+  flowSmoothingDisableAttempts_ = 0;
+  flowSmoothingPacketsSeen_ = false;
+  lastFlowSmoothingOn_ = false;
+  lastFlowSmoothingDisableMs_ = 0;
+
   RemoteScales::log("Connecting to %s[%s]\n", RemoteScales::getDeviceName().c_str(), RemoteScales::getDeviceAddress().c_str());
   bool result = RemoteScales::clientConnect();
   if (!result) {
@@ -74,11 +81,34 @@ void BookooScales::update() {
     RemoteScales::clientCleanup();
     connect();
     markedForReconnection = false;
+    return;
   }
-  else {
-    sendHeartbeat();
-    RemoteScales::log("Heartbeat sent.\n");
-  }
+
+  sendHeartbeat();
+  RemoteScales::log("Heartbeat sent.\n");
+  maybeRetrySmoothingDisable();
+}
+
+void BookooScales::maybeRetrySmoothingDisable() {
+  // The connect-time disableScaleSmoothing() doesn't always stick: on some
+  // Bookoo firmware revisions byte 17 still reads 1 even after we issue
+  // cmd 0x08 0x00. Drive a bounded retry from update() until the scale
+  // confirms via byte 17, or we exhaust the budget. Gates:
+  //  - must be connected (cmd writes are no-ops otherwise)
+  //  - must have parsed at least one weight packet, so byte 17 is current
+  //  - byte 17 still says smoothing is on
+  //  - at least RETRY_INTERVAL_MS since the last attempt (so the scale had
+  //    time to process the prior command and emit a fresh packet)
+  //  - within the attempt cap, to avoid pathological loops if the device
+  //    just doesn't honor cmd 0x08
+  if (!isConnected()) return;
+  if (!flowSmoothingPacketsSeen_) return;
+  if (!lastFlowSmoothingOn_) return;
+  if (flowSmoothingDisableAttempts_ >= MAX_FLOW_SMOOTHING_DISABLE_ATTEMPTS) return;
+  if (millis() - lastFlowSmoothingDisableMs_ < FLOW_SMOOTHING_DISABLE_RETRY_MS) return;
+
+  RemoteScales::log("Flow-smoothing still ON per byte 17; re-issuing disable.\n");
+  disableScaleSmoothing();
 }
 
 bool BookooScales::tare() {
@@ -99,7 +129,9 @@ bool BookooScales::tare() {
 
 void BookooScales::disableScaleSmoothing() {
   if (!isConnected()) return;
-  RemoteScales::log("Flow-smoothing OFF (cmd 0x08 0x00)");
+  flowSmoothingDisableAttempts_++;
+  lastFlowSmoothingDisableMs_ = millis();
+  RemoteScales::log("Flow-smoothing OFF (cmd 0x08 0x00, attempt %u)", flowSmoothingDisableAttempts_);
   // Command 0x08 disables the scale's own EMA on its reported flow rate, so
   // getFlowRate() returns raw per-sample flow rather than scale-side filtered
   // output. Firmware consumers (ShotHistoryPlugin, VolumetricRateCalculator)
@@ -261,8 +293,10 @@ bool BookooScales::decodeAndHandleNotification() {
 
     // Flow-smoothing switch (byte 17) — we disable it via cmd 0x08 0x00 in
     // connect() so firmware consumers see raw per-sample flow. Track the
-    // scale's reported state so we can verify the command was honored.
+    // scale's reported state so we can verify the command was honored;
+    // update() drives a bounded retry off this signal.
     lastFlowSmoothingOn_ = (dataBuffer[17] != 0x00);
+    flowSmoothingPacketsSeen_ = true;
   }
   else if (productNumber == 0x03 && messageType == BookooMessageType::SYSTEM) {
     RemoteScales::log("Inbound SYSTEM message ignored: %s\n", RemoteScales::byteArrayToHexString(dataBuffer.data(), messageLength).c_str());
