@@ -20,6 +20,7 @@
 #define DEFAULT_PUMP_MODEL_COEFFS "10.205,5.521"
 #define DEFAULT_MDNS_NAME "gaggimate"
 #define DEFAULT_OTA_CHANNEL "latest"
+#define DEFAULT_CUSTOM_OTA_URL "https://github.com/thetimetraveler/gaggimate/releases/tag/fork-nightly"
 #define DEFAULT_TIMEZONE "Europe/Rome"
 #define DEFAULT_HOME_ASSISTANT_TOPIC "homeassistant"
 #define DEFAULT_STEAM_PUMP_PERCENTAGE 4.f

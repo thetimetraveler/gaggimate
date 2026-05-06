@@ -23,6 +23,7 @@ Settings::Settings() {
     homekit = preferences.getBool("hk", false);
     volumetricTarget = preferences.getBool("vt", false);
     otaChannel = preferences.getString("oc", DEFAULT_OTA_CHANNEL);
+    customOTAUrl = preferences.getString("cou", DEFAULT_CUSTOM_OTA_URL);
     savedScale = preferences.getString("ssc", "");
     momentaryButtons = preferences.getBool("mb", false);
     boilerFillActive = preferences.getBool("bf_a", false);
@@ -215,6 +216,11 @@ void Settings::setVolumetricTarget(bool volumetric_target) {
 
 void Settings::setOTAChannel(const String &otaChannel) {
     this->otaChannel = otaChannel;
+    save();
+}
+
+void Settings::setCustomOTAUrl(const String &customOTAUrl) {
+    this->customOTAUrl = customOTAUrl;
     save();
 }
 
@@ -446,6 +452,7 @@ void Settings::doSave() {
     preferences.putBool("hk", homekit);
     preferences.putBool("vt", volumetricTarget);
     preferences.putString("oc", otaChannel);
+    preferences.putString("cou", customOTAUrl);
     preferences.putString("ssc", savedScale);
     preferences.putBool("bf_a", boilerFillActive);
     preferences.putInt("bf_su", startupFillTime);

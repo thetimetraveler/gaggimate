@@ -23,6 +23,15 @@
 static std::unordered_map<uint32_t, std::string> rxBuffers;
 static WebUIPlugin *g_webUIPlugin = nullptr;
 
+static String resolveReleaseUrl(const Settings &settings) {
+    const String channel = settings.getOTAChannel();
+    if (channel == "custom") {
+        const String custom = settings.getCustomOTAUrl();
+        return custom.isEmpty() ? (RELEASE_URL + "latest") : custom;
+    }
+    return RELEASE_URL + (channel == "latest" ? "latest" : "tag/nightly");
+}
+
 WebUIPlugin::WebUIPlugin() : server(80), ws("/ws") { g_webUIPlugin = this; }
 
 void WebUIPlugin::setup(Controller *_controller, PluginManager *_pluginManager) {
@@ -31,7 +40,7 @@ void WebUIPlugin::setup(Controller *_controller, PluginManager *_pluginManager) 
     this->pluginManager = _pluginManager;
     this->ota = new GitHubOTA(
         BUILD_GIT_VERSION, controller->getSystemInfo().version,
-        RELEASE_URL + (controller->getSettings().getOTAChannel() == "latest" ? "latest" : "tag/nightly"),
+        resolveReleaseUrl(controller->getSettings()),
         [this](uint8_t phase) {
             pluginManager->trigger("ota:update:phase", "phase", phase);
             updateOTAProgress(phase, 0);
@@ -421,9 +430,20 @@ void WebUIPlugin::handleWebSocketData(AsyncWebSocket *server, AsyncWebSocketClie
 
 void WebUIPlugin::handleOTASettings(uint32_t clientId, JsonDocument &request) {
     if (request["update"].as<bool>()) {
+        bool changed = false;
         if (!request["channel"].isNull()) {
-            controller->getSettings().setOTAChannel(request["channel"].as<String>() == "latest" ? "latest" : "nightly");
-            ota->setReleaseUrl(RELEASE_URL + (controller->getSettings().getOTAChannel() == "latest" ? "latest" : "tag/nightly"));
+            const String requested = request["channel"].as<String>();
+            const String normalized =
+                (requested == "latest" || requested == "nightly" || requested == "custom") ? requested : "latest";
+            controller->getSettings().setOTAChannel(normalized);
+            changed = true;
+        }
+        if (!request["customOTAUrl"].isNull()) {
+            controller->getSettings().setCustomOTAUrl(request["customOTAUrl"].as<String>());
+            changed = true;
+        }
+        if (changed) {
+            ota->setReleaseUrl(resolveReleaseUrl(controller->getSettings()));
             lastUpdateCheck = 0;
         }
     }
@@ -796,6 +816,7 @@ void WebUIPlugin::updateOTAStatus(const String &version) {
     doc["hardware"] = controller->getSystemInfo().hardware;
     doc["latestVersion"] = ota->getCurrentVersion();
     doc["channel"] = settings.getOTAChannel();
+    doc["customOTAUrl"] = settings.getCustomOTAUrl();
     doc["updating"] = updating;
     // SPIFFS usage metrics
     {

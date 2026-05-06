@@ -26,6 +26,7 @@ export function OTA() {
   const [isLoading, setIsLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({});
+  const [selectedChannel, setSelectedChannel] = useState('latest');
   const [phase, setPhase] = useState(0);
   const [progress, setProgress] = useState(0);
   const rssi = machine.value.status.rssi;
@@ -49,6 +50,7 @@ export function OTA() {
   useEffect(() => {
     const listenerId = apiService.on('res:ota-settings', msg => {
       setFormData(msg);
+      if (msg.channel) setSelectedChannel(msg.channel);
       setIsLoading(false);
       setSubmitting(false);
     });
@@ -97,7 +99,19 @@ export function OTA() {
       setSubmitting(true);
       const form = formRef.current;
       const formData = new FormData(form);
-      apiService.send({ tp: 'req:ota-settings', update: true, channel: formData.get('channel') });
+      // Only include customOTAUrl when the input is actually in the form
+      // (i.e. the user is on the "custom" channel). Otherwise we'd clobber
+      // the stored URL to empty whenever the user saves on latest/nightly.
+      const payload = {
+        tp: 'req:ota-settings',
+        update: true,
+        channel: formData.get('channel'),
+      };
+      const customUrl = formData.get('customOTAUrl');
+      if (customUrl !== null) {
+        payload.customOTAUrl = customUrl;
+      }
+      apiService.send(payload);
       setSubmitting(true);
     },
     [setFormData, formRef],
@@ -164,14 +178,40 @@ export function OTA() {
               <label htmlFor='channel' className='mb-2 block text-sm font-medium'>
                 Update Channel
               </label>
-              <select id='channel' name='channel' className='select select-bordered w-full'>
-                <option value='latest' selected={formData.channel === 'latest'}>
-                  Stable
-                </option>
-                <option value='nightly' selected={formData.channel === 'nightly'}>
-                  Nightly
-                </option>
+              <select
+                id='channel'
+                name='channel'
+                className='select select-bordered w-full'
+                value={selectedChannel}
+                onChange={e => setSelectedChannel(e.target.value)}
+              >
+                <option value='latest'>Stable</option>
+                <option value='nightly'>Nightly</option>
+                <option value='custom'>Custom (unofficial source)</option>
               </select>
+              {selectedChannel === 'custom' && (
+                <>
+                  <label htmlFor='customOTAUrl' className='mb-2 block text-sm font-medium'>
+                    Custom release URL
+                  </label>
+                  <input
+                    type='url'
+                    id='customOTAUrl'
+                    name='customOTAUrl'
+                    className='input input-bordered w-full'
+                    defaultValue={formData.customOTAUrl || ''}
+                    placeholder={'https://github.com/<owner>/gaggimate/releases/tag/fork-nightly'}
+                  />
+                  <div className='alert alert-warning'>
+                    <span>
+                      Custom channel pulls firmware from any URL you specify. There is no
+                      signature verification — only use URLs you fully trust. The release must
+                      publish <code>display-firmware.bin</code>, <code>display-filesystem.bin</code>
+                      , <code>board-firmware.bin</code>, and <code>version.txt</code> as assets.
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className='flex flex-col space-y-4'>
