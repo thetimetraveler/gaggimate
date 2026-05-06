@@ -21,6 +21,7 @@ lv_obj_t *ui_BrewScreen_controlContainer = NULL;
 lv_obj_t *ui_BrewScreen_modeSwitch = NULL;
 lv_obj_t *ui_BrewScreen_volumetricButton = NULL;
 lv_obj_t *ui_BrewScreen_weightLabel = NULL;
+lv_obj_t *ui_BrewScreen_batteryLabel = NULL;
 lv_obj_t *ui_BrewScreen_profileInfo = NULL;
 lv_obj_t *ui_BrewScreen_Label1 = NULL;
 lv_obj_t *ui_BrewScreen_Container3 = NULL;
@@ -246,7 +247,7 @@ void ui_BrewScreen_screen_init(void) {
 
     ui_BrewScreen_modeSwitch = lv_obj_create(ui_BrewScreen_controlContainer);
     lv_obj_set_width(ui_BrewScreen_modeSwitch, 160);
-    lv_obj_set_height(ui_BrewScreen_modeSwitch, 50);
+    lv_obj_set_height(ui_BrewScreen_modeSwitch, 76); // was 50; expanded so the battery label can stack below the scale icon without being clipped
     lv_obj_set_align(ui_BrewScreen_modeSwitch, LV_ALIGN_CENTER);
     lv_obj_set_flex_flow(ui_BrewScreen_modeSwitch, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(ui_BrewScreen_modeSwitch, LV_FLEX_ALIGN_SPACE_AROUND, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -258,19 +259,48 @@ void ui_BrewScreen_screen_init(void) {
                                            _ui_theme_alpha_Dark);
     lv_obj_set_style_border_width(ui_BrewScreen_modeSwitch, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    ui_BrewScreen_volumetricButton = lv_img_create(ui_BrewScreen_modeSwitch);
+    // Vertical sub-container holding scale icon + battery label. Flex COLUMN
+    // with cross-axis CENTER guarantees the battery glyph lines up horizontally
+    // under the scale icon without manual align_to math.
+    lv_obj_t *iconColumn = lv_obj_create(ui_BrewScreen_modeSwitch);
+    lv_obj_remove_style_all(iconColumn);
+    lv_obj_set_width(iconColumn, LV_SIZE_CONTENT);
+    lv_obj_set_height(iconColumn, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(iconColumn, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(iconColumn, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(iconColumn, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_pad_all(iconColumn, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_row(iconColumn, 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    ui_BrewScreen_volumetricButton = lv_img_create(iconColumn);
     lv_img_set_src(ui_BrewScreen_volumetricButton, &ui_img_1424216268);
+    // Shrink the scale icon to ~65% so the battery label can stack below it
+    // inside the modeSwitch pill without running into the weight readout.
+    lv_img_set_zoom(ui_BrewScreen_volumetricButton, 166); // 256 = 1.0x
     lv_obj_set_width(ui_BrewScreen_volumetricButton, LV_SIZE_CONTENT);  /// 1
     lv_obj_set_height(ui_BrewScreen_volumetricButton, LV_SIZE_CONTENT); /// 1
-    lv_obj_set_x(ui_BrewScreen_volumetricButton, -29);
-    lv_obj_set_y(ui_BrewScreen_volumetricButton, -81);
-    lv_obj_set_align(ui_BrewScreen_volumetricButton, LV_ALIGN_CENTER);
     lv_obj_add_flag(ui_BrewScreen_volumetricButton, LV_OBJ_FLAG_ADV_HITTEST);  /// Flags
     lv_obj_clear_flag(ui_BrewScreen_volumetricButton, LV_OBJ_FLAG_SCROLLABLE); /// Flags
     ui_object_set_themeable_style_property(ui_BrewScreen_volumetricButton, LV_PART_MAIN | LV_STATE_DEFAULT, LV_STYLE_IMG_RECOLOR,
                                            _ui_theme_color_NiceWhite);
     ui_object_set_themeable_style_property(ui_BrewScreen_volumetricButton, LV_PART_MAIN | LV_STATE_DEFAULT,
                                            LV_STYLE_IMG_RECOLOR_OPA, _ui_theme_alpha_NiceWhite);
+
+    // Scale battery indicator stacked under the scale icon inside iconColumn.
+    // Flex COLUMN cross-axis CENTER handles the horizontal alignment — no
+    // manual align_to needed. DefaultUI drives visibility/color/text via an
+    // effect; starts hidden + empty so it doesn't flash at init time.
+    ui_BrewScreen_batteryLabel = lv_label_create(iconColumn);
+    lv_obj_set_width(ui_BrewScreen_batteryLabel, LV_SIZE_CONTENT);
+    lv_obj_set_height(ui_BrewScreen_batteryLabel, LV_SIZE_CONTENT);
+    lv_label_set_text(ui_BrewScreen_batteryLabel, "");
+    lv_obj_add_flag(ui_BrewScreen_batteryLabel, LV_OBJ_FLAG_HIDDEN);
+    ui_object_set_themeable_style_property(ui_BrewScreen_batteryLabel, LV_PART_MAIN | LV_STATE_DEFAULT, LV_STYLE_TEXT_COLOR,
+                                           _ui_theme_color_NiceWhite);
+    ui_object_set_themeable_style_property(ui_BrewScreen_batteryLabel, LV_PART_MAIN | LV_STATE_DEFAULT, LV_STYLE_TEXT_OPA,
+                                           _ui_theme_alpha_NiceWhite);
+    lv_obj_set_style_pad_all(ui_BrewScreen_batteryLabel, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui_BrewScreen_batteryLabel, &lv_font_montserrat_20, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_BrewScreen_weightLabel = lv_label_create(ui_BrewScreen_modeSwitch);
     lv_obj_set_width(ui_BrewScreen_weightLabel, 90);
@@ -572,6 +602,7 @@ void ui_BrewScreen_screen_destroy(void) {
     ui_BrewScreen_modeSwitch = NULL;
     ui_BrewScreen_volumetricButton = NULL;
     ui_BrewScreen_weightLabel = NULL;
+    ui_BrewScreen_batteryLabel = NULL;
     ui_BrewScreen_profileInfo = NULL;
     ui_BrewScreen_Label1 = NULL;
     ui_BrewScreen_Container3 = NULL;

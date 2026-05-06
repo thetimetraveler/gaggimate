@@ -25,23 +25,28 @@ BLEScalePlugin BLEScales;
 
 BLEScalePlugin::BLEScalePlugin() = default;
 
-BLEScalePlugin::~BLEScalePlugin() {
-    // Disable active flag first to stop processing
-    active = false;
+BLEScalePlugin::~BLEScalePlugin() noexcept {
+    try {
+        // Disable active flag first to stop processing
+        active = false;
 
-    // Give any running callbacks time to complete
-    delay(100);
+        // Give any running callbacks time to complete
+        delay(100);
 
-    // Ensure proper cleanup
-    disconnect();
+        // Ensure proper cleanup
+        disconnect();
 
-    if (scanner != nullptr) {
-        // Stop scanning first
-        scanner->stopAsyncScan();
-        // Give it time to actually stop
-        delay(50);
-        delete scanner;
-        scanner = nullptr;
+        if (scanner != nullptr) {
+            // Stop scanning first
+            scanner->stopAsyncScan();
+            // Give it time to actually stop
+            delay(50);
+            delete scanner;
+            scanner = nullptr;
+        }
+    } catch (...) {
+        // Swallow: destructors must not propagate exceptions.
+        // NimBLE + Arduino delay() calls don't throw in practice; belt-and-braces.
     }
 }
 
@@ -52,6 +57,7 @@ void BLEScalePlugin::setup(Controller *controller, PluginManager *manager) {
     }
 
     this->controller = controller;
+    this->pluginManager = manager;
     this->pluginRegistry = RemoteScalesPluginRegistry::getInstance();
 
     // Apply scale plugins with error checking
@@ -88,6 +94,11 @@ void BLEScalePlugin::setup(Controller *controller, PluginManager *manager) {
         scanner->stopAsyncScan();
     });
     manager->on("controller:brew:prestart", [this](Event const &) { onProcessStart(); });
+    manager->on("controller:brew:end", [this](Event const &) {
+        if (scale != nullptr && scale->isConnected() && scale->hasTimerControl()) {
+            scale->stopTimer();
+        }
+    });
     manager->on("controller:grind:start", [this](Event const &) { onProcessStart(); });
     manager->on("controller:mode:change", [this](Event const &event) {
         if (event.getInt("value") != MODE_STANDBY) {
@@ -149,6 +160,21 @@ void BLEScalePlugin::update() {
                     scanner->initializeAsyncScan();
                 }
             }
+        } else {
+            // Poll slow-changing metadata (battery, unit). Flow rate is
+            // emitted inline with each weight measurement, not polled here.
+            pollScaleMetadata();
+            // One-shot signal when the Bookoo retry loop exhausts without
+            // the scale confirming smoothing off. Lets shot history /
+            // future UI flag affected sessions instead of users having
+            // to curl /api/scales/debug to discover the failure.
+            if (!firedFlowSmoothingDisableFailedEvent && scale->hasFlowSmoothingDisableExhausted()) {
+                firedFlowSmoothingDisableFailedEvent = true;
+                ESP_LOGW("BLEScalePlugin", "Scale flow-smoothing disable exhausted retries; vf will be lagged");
+                if (pluginManager != nullptr) {
+                    pluginManager->trigger("scale:flow-smoothing:disable-failed");
+                }
+            }
         }
     } else if (controller->getSettings().getSavedScale() != "" && scanner != nullptr) {
         // Protected scanner access with null checks
@@ -203,6 +229,12 @@ void BLEScalePlugin::disconnect() {
         uuid = "";
         doConnect = false;
         reconnectionTries = 0;
+        // Reset metadata caches so we re-emit change events when a new scale
+        // connects (possibly a different model with different capabilities).
+        lastBatteryLevel = REMOTE_SCALES_BATTERY_UNKNOWN;
+        lastWeightUnit = ScaleWeightUnit::UNKNOWN;
+        warnedOunceMidBrew = false;
+        firedFlowSmoothingDisableFailedEvent = false;
     }
 }
 
@@ -331,9 +363,14 @@ void BLEScalePlugin::establishConnection() {
 }
 
 void BLEScalePlugin::onMeasurement(float value) const {
+    onMeasurementEnterCount++;
+    lastOnMeasurementMs = millis();
+    lastWeightSeen = value;
+
     // Rate limiting to prevent callback flooding
     unsigned long now = millis();
     if (now - lastMeasurementTime < MIN_MEASUREMENT_INTERVAL_MS) {
+        onMeasurementDropRateLimit++;
         return; // Drop measurement to prevent flooding
     }
     lastMeasurementTime = now;
@@ -345,17 +382,79 @@ void BLEScalePlugin::onMeasurement(float value) const {
 
     // Check if we're being destroyed or in an unsafe state
     if (!active) {
+        onMeasurementDropInactive++;
         return; // Don't process measurements when not active
     }
 
     // Validate the measurement value
     if (!isfinite(value) || value < -1000.0f || value > 10000.0f) {
+        onMeasurementDropInvalid++;
         ESP_LOGW("BLEScalePlugin", "Invalid measurement value: %f, ignoring", value);
         return;
     }
 
+    // Mid-shot unit-flip guard: the shot-start guard in
+    // Controller::isVolumetricAvailable() only covers entry into the shot.
+    // If the user physically toggles the scale to ounces *during* a brew,
+    // weight samples drop ~28x and the volumetric target is never hit --
+    // shot would then run until the time-safety cutoff. Detect oz per-sample
+    // and disable volumetric routing so the remainder of the shot falls
+    // through to time-based stop.
+    if (scale != nullptr && scale->hasWeightUnit() && scale->getWeightUnit() == ScaleWeightUnit::OUNCE) {
+        onMeasurementDropOunce++;
+        if (controller->isActive() && !warnedOunceMidBrew) {
+            ESP_LOGW("BLEScalePlugin",
+                     "Scale switched to oz mid-brew -- aborting volumetric, falling back to time stop");
+            warnedOunceMidBrew = true;
+        }
+        controller->setVolumetricOverride(false);
+    } else {
+        // Unit returned to grams (or is unknown again) -- re-arm the latch
+        // so a subsequent flip back to oz warns again.
+        warnedOunceMidBrew = false;
+    }
+
+    onMeasurementPassCount++;
     // Safe to call controller method
     controller->onVolumetricMeasurement(value, VolumetricMeasurementSource::BLUETOOTH);
+
+    // If the scale driver also provides native flow rate (e.g. Bookoo), emit
+    // it on the same tick so consumers get it at the scale's native cadence
+    // (~10 Hz) without having to poll. Controller.onVolumetricMeasurement
+    // updates lastBluetoothMeasurement timestamps as a side effect; we reuse
+    // a lighter path here since flow is not gating shot state.
+    if (scale != nullptr && scale->hasFlowRate() && pluginManager != nullptr) {
+        pluginManager->trigger(
+            "controller:volumetric-measurement:scale-flow:change",
+            "value", scale->getFlowRate());
+    }
+}
+
+void BLEScalePlugin::pollScaleMetadata() {
+    if (scale == nullptr || !scale->isConnected() || pluginManager == nullptr) {
+        return;
+    }
+    auto *pm = pluginManager;
+
+    // Battery % -- fire event only on change so consumers can subscribe without
+    // being hammered at 1 Hz with duplicate values.
+    if (scale->hasBatteryLevel()) {
+        const uint8_t pct = scale->getBatteryLevel();
+        if (pct != lastBatteryLevel && pct != REMOTE_SCALES_BATTERY_UNKNOWN) {
+            lastBatteryLevel = pct;
+            pm->trigger("scale:battery:change", "value", static_cast<int>(pct));
+        }
+    }
+
+    // Weight unit -- fire once when we first learn the unit, then only when
+    // the user switches unit on the scale physically (rare).
+    if (scale->hasWeightUnit()) {
+        const ScaleWeightUnit u = scale->getWeightUnit();
+        if (u != lastWeightUnit && u != ScaleWeightUnit::UNKNOWN) {
+            lastWeightUnit = u;
+            pm->trigger("scale:weight-unit:change", "value", static_cast<int>(u));
+        }
+    }
 }
 
 std::vector<DiscoveredDevice> BLEScalePlugin::getDiscoveredScales() const {

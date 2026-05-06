@@ -219,6 +219,20 @@ void DefaultUI::init() {
             rerender = true;
         }
     });
+    pluginManager->on("scale:battery:change", [=](Event const &event) {
+        int pct = event.getInt("value");
+        uint8_t clamped = (pct < 0 || pct > 100) ? 255 : static_cast<uint8_t>(pct);
+        if (clamped != scaleBatteryPct) {
+            scaleBatteryPct = clamped;
+            rerender = true;
+        }
+    });
+    pluginManager->on("controller:bluetooth:disconnect", [this](Event const &) {
+        if (scaleBatteryPct != 255) {
+            scaleBatteryPct = 255;
+            rerender = true;
+        }
+    });
     setupState();
     setupReactive();
     xTaskCreatePinnedToCore(loopTask, "DefaultUI::loop", configMINIMAL_STACK_SIZE * 6, this, 1, &taskHandle, 1);
@@ -644,6 +658,43 @@ void DefaultUI::setupReactive() {
                               }
                           },
                           &bluetoothWeight, &volumetricAvailable, &bluetoothScales);
+    // Scale battery indicator in the brew-screen pill. Hidden when scale is
+    // disconnected or battery unknown. Icon-only when healthy (≥30%); icon +
+    // numeric only when user should act (≤30%). Red ≤9, amber ≤30, themed
+    // otherwise. Shares the bluetoothScales dep so it auto-hides on disconnect.
+    effect_mgr.use_effect(
+        [=] { return currentScreen == ui_BrewScreen; },
+        [=]() {
+            const bool visible = bluetoothScales && scaleBatteryPct <= 100;
+            if (!visible) {
+                lv_obj_add_flag(ui_BrewScreen_batteryLabel, LV_OBJ_FLAG_HIDDEN);
+                return;
+            }
+            lv_obj_clear_flag(ui_BrewScreen_batteryLabel, LV_OBJ_FLAG_HIDDEN);
+            const char *icon = scaleBatteryPct >= 87   ? LV_SYMBOL_BATTERY_FULL
+                               : scaleBatteryPct >= 62 ? LV_SYMBOL_BATTERY_3
+                               : scaleBatteryPct >= 37 ? LV_SYMBOL_BATTERY_2
+                               : scaleBatteryPct >= 12 ? LV_SYMBOL_BATTERY_1
+                                                       : LV_SYMBOL_BATTERY_EMPTY;
+            if (scaleBatteryPct <= 30) {
+                lv_label_set_text_fmt(ui_BrewScreen_batteryLabel, "%s %u%%", icon,
+                                      static_cast<unsigned>(scaleBatteryPct));
+            } else {
+                lv_label_set_text(ui_BrewScreen_batteryLabel, icon);
+            }
+            if (scaleBatteryPct <= 9) {
+                lv_obj_set_style_text_color(ui_BrewScreen_batteryLabel, lv_color_hex(0xE11D48),
+                                            LV_PART_MAIN | LV_STATE_DEFAULT);
+            } else if (scaleBatteryPct <= 30) {
+                lv_obj_set_style_text_color(ui_BrewScreen_batteryLabel, lv_color_hex(0xF59E0B),
+                                            LV_PART_MAIN | LV_STATE_DEFAULT);
+            } else {
+                ui_object_set_themeable_style_property(ui_BrewScreen_batteryLabel,
+                                                       LV_PART_MAIN | LV_STATE_DEFAULT, LV_STYLE_TEXT_COLOR,
+                                                       _ui_theme_color_NiceWhite);
+            }
+        },
+        &scaleBatteryPct, &bluetoothScales);
     effect_mgr.use_effect([=] { return currentScreen == ui_GrindScreen; },
                           [=]() {
                               if (volumetricAvailable && bluetoothScales) {

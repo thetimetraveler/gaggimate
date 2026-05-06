@@ -12,7 +12,7 @@ constexpr unsigned int RECONNECTION_TRIES = 15;
 class BLEScalePlugin : public Plugin {
   public:
     BLEScalePlugin();
-    ~BLEScalePlugin();
+    ~BLEScalePlugin() noexcept;
 
     void setup(Controller *controller, PluginManager *pluginManager) override;
     void loop() override;
@@ -45,9 +45,43 @@ class BLEScalePlugin : public Plugin {
     std::vector<DiscoveredDevice> getDiscoveredScales() const;
     void tare() const;
 
+    // Accessors for the native scale fields that drivers optionally expose
+    // (see RemoteScales). Each returns a sentinel value if not supported.
+    float getFlowRate() const { return scale != nullptr && scale->hasFlowRate() ? scale->getFlowRate() : 0.0f; }
+    bool hasFlowRate() const { return scale != nullptr && scale->hasFlowRate(); }
+    uint8_t getBatteryLevel() const {
+        return scale != nullptr && scale->hasBatteryLevel() ? scale->getBatteryLevel() : REMOTE_SCALES_BATTERY_UNKNOWN;
+    }
+    bool hasBatteryLevel() const { return scale != nullptr && scale->hasBatteryLevel(); }
+    ScaleWeightUnit getWeightUnit() const {
+        return scale != nullptr && scale->hasWeightUnit() ? scale->getWeightUnit() : ScaleWeightUnit::UNKNOWN;
+    }
+    bool hasWeightUnit() const { return scale != nullptr && scale->hasWeightUnit(); }
+    uint32_t getScaleTimerMs() const {
+        return scale != nullptr && scale->hasScaleTimer() ? scale->getScaleTimerMs() : 0;
+    }
+    bool hasScaleTimer() const { return scale != nullptr && scale->hasScaleTimer(); }
+    // Surface the scale's reported flow-smoothing state so the debug endpoint
+    // can verify our disableScaleSmoothing() command took. Drivers that don't
+    // track this return false by default (RemoteScales base impl).
+    bool isFlowSmoothingOn() const { return scale != nullptr && scale->isFlowSmoothingOn(); }
+    // Retry diagnostics: how many disable commands we've sent on the current
+    // connection, and whether at least one weight notification has been
+    // parsed (without which isFlowSmoothingOn() is just the default).
+    uint8_t getFlowSmoothingDisableAttempts() const {
+        return scale != nullptr ? scale->getFlowSmoothingDisableAttempts() : 0;
+    }
+    bool getFlowSmoothingPacketsSeen() const {
+        return scale != nullptr && scale->getFlowSmoothingPacketsSeen();
+    }
+    bool hasFlowSmoothingDisableExhausted() const {
+        return scale != nullptr && scale->hasFlowSmoothingDisableExhausted();
+    }
+
   private:
     void update();
     void onProcessStart() const;
+    void pollScaleMetadata();
 
     void establishConnection();
 
@@ -58,11 +92,40 @@ class BLEScalePlugin : public Plugin {
     unsigned long lastUpdate = 0;
     unsigned int reconnectionTries = 0;
 
+    // Cached scale-metadata values used to avoid firing an event for each
+    // unchanged poll tick. Reset when the scale disconnects.
+    uint8_t lastBatteryLevel = REMOTE_SCALES_BATTERY_UNKNOWN;
+    ScaleWeightUnit lastWeightUnit = ScaleWeightUnit::UNKNOWN;
+
+    // Latch so the mid-brew oz warning + volumetric abort fires once per
+    // transition into ounces, not once per sample at ~10 Hz. Reset on
+    // disconnect and when the unit returns to grams.
+    mutable bool warnedOunceMidBrew = false;
+
+    // Latch so the smoothing-disable-failed event fires once per connection
+    // when the driver gives up retrying cmd 0x08 0x00. Reset on disconnect.
+    bool firedFlowSmoothingDisableFailedEvent = false;
+
     // Rate limiting for callbacks
     mutable unsigned long lastMeasurementTime = 0;
     static constexpr unsigned long MIN_MEASUREMENT_INTERVAL_MS = 10; // Max 100 measurements per second
 
+    // Debug counters (fork-only, read via /api/scales/debug). Help pin down
+    // whether weights are arriving at this layer or being dropped upstream
+    // in the Bookoo driver / NimBLE subscribe path.
+  public:
+    mutable uint32_t onMeasurementEnterCount = 0;   // every call to onMeasurement
+    mutable uint32_t onMeasurementPassCount = 0;    // passed every guard, forwarded to controller
+    mutable uint32_t onMeasurementDropRateLimit = 0;
+    mutable uint32_t onMeasurementDropInactive = 0;
+    mutable uint32_t onMeasurementDropInvalid = 0;
+    mutable uint32_t onMeasurementDropOunce = 0;
+    mutable float lastWeightSeen = 0.0f;
+    mutable unsigned long lastOnMeasurementMs = 0;
+  private:
+
     Controller *controller = nullptr;
+    PluginManager *pluginManager = nullptr;
     RemoteScalesPluginRegistry *pluginRegistry = nullptr;
     RemoteScalesScanner *scanner = nullptr;
     std::unique_ptr<RemoteScales> scale = nullptr;

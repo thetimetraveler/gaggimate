@@ -123,6 +123,16 @@ void WebUIPlugin::loop() {
         doc["bw"] = bleConnected ? this->currentBluetoothWeight : 0; // current bluetooth weight
         doc["cw"] = bleConnected ? this->currentBluetoothWeight : 0; // Use 'currentWeight' for forward compatbility
         doc["bc"] = bleConnected;                                    // bluetooth scale connected status
+        // Scale battery — only surfaced when the driver reports one and the
+        // value isn't the UNKNOWN sentinel (255). UI omits the battery pill
+        // entirely when `sbat` is absent, so disconnected/unknown scales don't
+        // render a stale stub.
+        if (bleConnected && BLEScales.hasBatteryLevel()) {
+            const uint8_t pct = BLEScales.getBatteryLevel();
+            if (pct != REMOTE_SCALES_BATTERY_UNKNOWN) {
+                doc["sbat"] = pct;
+            }
+        }
 
         Process *process = controller->getProcess();
         if (process == nullptr) {
@@ -208,6 +218,49 @@ void WebUIPlugin::setupServer() {
     server.on("/api/scales/connect", [this](AsyncWebServerRequest *request) { handleBLEScaleConnect(request); });
     server.on("/api/scales/scan", [this](AsyncWebServerRequest *request) { handleBLEScaleScan(request); });
     server.on("/api/scales/info", [this](AsyncWebServerRequest *request) { handleBLEScaleInfo(request); });
+    server.on("/api/scales/debug", [this](AsyncWebServerRequest *request) {
+        // Fork-only diagnostic: counters + live flags for every stage of the
+        // Bookoo -> display -> brew-target pipeline. Pinpoints whether weights
+        // are dropped at the onMeasurement gates or upstream in the BLE
+        // subscribe path (zero enter count).
+        JsonDocument doc;
+        doc["scaleConnected"] = BLEScales.isConnected();
+        doc["scaleName"] = BLEScales.getName();
+        doc["scaleUUID"] = BLEScales.getUUID();
+        doc["scaleRSSI"] = BLEScales.getRSSI();
+        doc["hasWeightUnit"] = BLEScales.hasWeightUnit();
+        doc["weightUnit"] = static_cast<int>(BLEScales.getWeightUnit());
+        doc["hasFlowRate"] = BLEScales.hasFlowRate();
+        doc["flowRate"] = BLEScales.getFlowRate();
+        doc["hasBattery"] = BLEScales.hasBatteryLevel();
+        doc["battery"] = BLEScales.getBatteryLevel();
+        doc["hasScaleTimer"] = BLEScales.hasScaleTimer();
+        doc["scaleTimerMs"] = BLEScales.getScaleTimerMs();
+        doc["onMeasurementEnterCount"] = BLEScales.onMeasurementEnterCount;
+        doc["onMeasurementPassCount"] = BLEScales.onMeasurementPassCount;
+        doc["onMeasurementDropRateLimit"] = BLEScales.onMeasurementDropRateLimit;
+        doc["onMeasurementDropInactive"] = BLEScales.onMeasurementDropInactive;
+        doc["onMeasurementDropInvalid"] = BLEScales.onMeasurementDropInvalid;
+        doc["onMeasurementDropOunce"] = BLEScales.onMeasurementDropOunce;
+        doc["lastWeightSeen"] = BLEScales.lastWeightSeen;
+        doc["msSinceLastOnMeasurement"] =
+            BLEScales.lastOnMeasurementMs == 0 ? -1 : static_cast<long>(millis() - BLEScales.lastOnMeasurementMs);
+        doc["isVolumetricAvailable"] = controller->isVolumetricAvailable();
+        doc["isBluetoothScaleHealthy"] = controller->isBluetoothScaleHealthy();
+        // Smoothing-disable verification (Bookoo only — other drivers report
+        // 0/false). isFlowSmoothingOn is meaningful only when packetsSeen is
+        // true; before the first weight packet the field is just the default.
+        doc["isFlowSmoothingOn"] = BLEScales.isFlowSmoothingOn();
+        doc["flowSmoothingDisableAttempts"] = BLEScales.getFlowSmoothingDisableAttempts();
+        doc["flowSmoothingPacketsSeen"] = BLEScales.getFlowSmoothingPacketsSeen();
+        // True iff the retry loop gave up without confirmation. If this is
+        // ever true, vf is being delivered with EMA lag and the firmware-
+        // side projection will run long.
+        doc["flowSmoothingDisableExhausted"] = BLEScales.hasFlowSmoothingDisableExhausted();
+        AsyncResponseStream *response = request->beginResponseStream("application/json");
+        serializeJson(doc, *response);
+        request->send(response);
+    });
     FS *fs = &SPIFFS;
     if (controller->isSDCard()) {
         fs = &SD_MMC;
@@ -714,6 +767,15 @@ void WebUIPlugin::handleBLEScaleInfo(AsyncWebServerRequest *request) {
     doc["name"] = BLEScales.getName();
     doc["uuid"] = BLEScales.getUUID();
     doc["rssi"] = BLEScales.getRSSI();
+    doc["hasBattery"] = BLEScales.hasBatteryLevel();
+    // Only surface the numeric when the scale reports one — a 255 sentinel
+    // (REMOTE_SCALES_BATTERY_UNKNOWN) would otherwise render as a fake "255%".
+    if (BLEScales.hasBatteryLevel()) {
+        const uint8_t pct = BLEScales.getBatteryLevel();
+        if (pct != REMOTE_SCALES_BATTERY_UNKNOWN) {
+            doc["battery"] = pct;
+        }
+    }
     AsyncResponseStream *response = request->beginResponseStream("application/json");
     serializeJson(doc, *response);
     request->send(response);

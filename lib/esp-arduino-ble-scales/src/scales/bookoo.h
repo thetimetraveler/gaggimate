@@ -1,0 +1,156 @@
+#pragma once
+#include "remote_scales.h"
+#include "remote_scales_plugin_registry.h"
+#include <Arduino.h>
+#include <NimBLEDevice.h>
+#include <NimBLEUtils.h>
+#include <NimBLEScan.h>
+#include <vector>
+#include <memory>
+
+enum class BookooMessageType : uint8_t {
+  SYSTEM = 0x0A,
+  WEIGHT = 0x0B
+};
+
+class BookooScales : public RemoteScales {
+
+public:
+  BookooScales(const DiscoveredDevice& device);
+  void update() override;
+  bool connect() override;
+  void disconnect() override;
+  bool isConnected() override;
+  bool tare() override;
+
+  void startTimer() override;
+  void stopTimer() override;
+  void resetTimer() override;
+
+  // Capability overrides — Bookoo parses all of these out of the 20-byte
+  // weight notification (0x0B). See decodeAndHandleNotification() for layout.
+  bool hasFlowRate() const override { return true; }
+  bool hasBatteryLevel() const override { return true; }
+  bool hasScaleTimer() const override { return true; }
+  bool hasTimerControl() const override { return true; }
+  bool hasWeightUnit() const override { return true; }
+  // Ultra reports an auto-mode stop condition in byte 18 of the weight
+  // notification (0 = stop on liquid-flow-stop, 1 = stop on container-removal);
+  // Mini always sends 0x00 (reserved). Gate this capability on Ultra detection
+  // via the advertising name (BOOKOO_SC_U prefix) — see isUltra_ in the
+  // constructor. Consumers reading getAutoModeStopCondition() on a Mini would
+  // otherwise see a misleading 0.
+  bool hasAutoModeStopCondition() const override { return isUltra_; }
+
+  // True when the advertised name marks this device as an Ultra (BOOKOO_SC_U
+  // prefix). Mini (and unknown future models) default to false.
+  bool isUltra() const { return isUltra_; }
+
+  // Mirror of byte 17 (flow-smoothing switch) from the most recent weight
+  // notification. We send cmd 0x08 0x00 in connect() to disable the scale's
+  // own EMA so consumers see raw per-sample flow; this lets callers verify
+  // the scale actually honored the request. False until the first
+  // notification is parsed.
+  bool isFlowSmoothingOn() const override { return lastFlowSmoothingOn_; }
+
+  // Diagnostics for the smoothing-disable retry loop driven from update().
+  // attempts: how many times we've sent cmd 0x08 0x00 since the most recent
+  // connect(). packetsSeen: whether at least one weight notification has been
+  // parsed (so the value of isFlowSmoothingOn() is meaningful, not the
+  // construction-time default).
+  uint8_t getFlowSmoothingDisableAttempts() const override { return flowSmoothingDisableAttempts_; }
+  bool getFlowSmoothingPacketsSeen() const override { return flowSmoothingPacketsSeen_; }
+  // Retry budget exhausted with the scale still reporting smoothing on.
+  // Requires packetsSeen so we don't latch on the construction-time default
+  // of lastFlowSmoothingOn_=false.
+  bool hasFlowSmoothingDisableExhausted() const override {
+      return flowSmoothingPacketsSeen_
+          && lastFlowSmoothingOn_
+          && flowSmoothingDisableAttempts_ >= MAX_FLOW_SMOOTHING_DISABLE_ATTEMPTS;
+  }
+
+  // Ultra-only commands. No-op on Mini scales. See the Bookoo Ultra protocol
+  // spec for byte-level details:
+  //   https://github.com/BooKooCode/OpenSource/blob/main/bookoo_ultra_scale/protocols.md
+  //
+  // setAutoModeStopConditionOnScale: command 0x0B, writes the scale's own
+  // auto-mode stop condition (0 = liquid-flow-stop, 1 = container-removal).
+  // Only meaningful if the scale is in auto-mode; does not affect GaggiMate's
+  // own brew-by-weight flow (which uses Timer mode).
+  void setAutoModeStopConditionOnScale(bool onContainerRemoval);
+
+  // calibrate: command 0x09, triggers factory calibration. Only effective
+  // when the scale is physically in weight-mode; no-op otherwise and on Mini.
+  void calibrate();
+
+  // Ask the scale to turn off its own flow-rate EMA so firmware consumers
+  // see raw native flow instead of double-filtered output. Idempotent;
+  // safe to call repeatedly. Does nothing if disconnected.
+  void disableScaleSmoothing();
+
+private:
+  uint32_t lastHeartbeat = 0;
+
+  bool markedForReconnection = false;
+
+  // Set once at construction time from the advertising name. Ultra devices
+  // advertise as BOOKOO_SC_U<...>; Mini as BOOKOO_SC_M<...>. Default false
+  // (Mini-compatible) for any name that doesn't match the Ultra prefix so
+  // we never accidentally enable Ultra-only commands on a Mini.
+  const bool isUltra_;
+
+  // Mirrors byte 17 of the most recently parsed weight notification.
+  // mutable here is for const-correctness on isFlowSmoothingOn() — NOT a
+  // thread-safety claim. Cross-task reads (NimBLE notify task vs. main
+  // loop) are safe in practice on bool/uint8 (no torn reads on 32-bit
+  // ESP32) but if we ever care, switch to std::atomic.
+  mutable bool lastFlowSmoothingOn_ = false;
+
+  // Smoothing-disable retry state. We send the disable command at connect,
+  // but on some Bookoo firmware revisions it doesn't take on the first try
+  // (notifications start before the command is processed, ordering bug, etc.).
+  // The scale broadcasts its real state in byte 17 of every weight packet,
+  // so update() polls and re-issues the command until it reads off or we
+  // hit MAX_FLOW_SMOOTHING_DISABLE_ATTEMPTS.
+  static constexpr uint32_t FLOW_SMOOTHING_DISABLE_RETRY_MS = 2000;
+  static constexpr uint8_t MAX_FLOW_SMOOTHING_DISABLE_ATTEMPTS = 6;
+  uint32_t lastFlowSmoothingDisableMs_ = 0;
+  uint8_t flowSmoothingDisableAttempts_ = 0;
+  bool flowSmoothingPacketsSeen_ = false;
+
+  void maybeRetrySmoothingDisable();
+
+  NimBLERemoteService* service;
+  NimBLERemoteCharacteristic* weightCharacteristic;
+  NimBLERemoteCharacteristic* commandCharacteristic;
+
+  std::vector<uint8_t> dataBuffer;
+
+  bool performConnectionHandshake();
+  void subscribeToNotifications();
+
+  void sendMessage(const uint8_t* payload, size_t length, bool waitResponse = false);
+  void sendEvent(const uint8_t* payload, size_t length);
+  void sendHeartbeat();
+  void sendNotificationRequest();
+  void sendId();
+  void notifyCallback(NimBLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify);
+  bool decodeAndHandleNotification();
+};
+
+class BookooScalesPlugin {
+public:
+  static void apply() {
+    RemoteScalesPlugin plugin = RemoteScalesPlugin{
+      .id = "plugin-bookoo",
+      .handles = [](const DiscoveredDevice& device) { return BookooScalesPlugin::handles(device); },
+      .initialise = [](const DiscoveredDevice& device) -> std::unique_ptr<RemoteScales> { return std::make_unique<BookooScales>(device); },
+    };
+    RemoteScalesPluginRegistry::getInstance()->registerPlugin(plugin);
+  }
+private:
+  static bool handles(const DiscoveredDevice& device) {
+    const std::string& deviceName = device.getName();
+    return !deviceName.empty() && (deviceName.find("BOOKOO_SC") == 0);
+  }
+};
