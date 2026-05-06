@@ -15,6 +15,9 @@
 #include <algorithm>
 #include <display/plugins/BLEScalePlugin.h>
 #include <display/plugins/ShotHistoryPlugin.h>
+#include <display/util/sd_format.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -411,6 +414,28 @@ void WebUIPlugin::handleWebSocketData(AsyncWebSocket *server, AsyncWebSocketClie
                     serializeJson(resp, buffer->get(), bufferSize);
                     client->text(buffer);
                     ShotHistory.startAsyncRebuild();
+                } else if (msgType == "req:sd:format") {
+                    JsonDocument resp;
+                    resp["tp"] = "res:sd:format";
+                    if (doc["rid"].is<const char *>()) {
+                        resp["rid"] = doc["rid"];
+                    }
+                    // Deliberately allow format even when isSDCard() is
+                    // false — that's the recovery path for a card whose FS
+                    // the driver couldn't read at boot (exFAT, NTFS, raw).
+                    if (controller->getMode() == MODE_BREW &&
+                        controller->getProcess() && controller->getProcess()->isActive()) {
+                        resp["ok"] = false;
+                        resp["msg"] = "Cannot format during an active brew";
+                    } else {
+                        resp["ok"] = true;
+                        resp["msg"] = "Format started";
+                        startSDCardFormat();
+                    }
+                    size_t bufferSize = measureJson(resp);
+                    auto *buffer = ws.makeBuffer(bufferSize);
+                    serializeJson(resp, buffer->get(), bufferSize);
+                    client->text(buffer);
                 } else if (msgType.startsWith("req:history")) {
                     JsonDocument resp;
                     ShotHistory.handleRequest(doc, resp);
@@ -932,4 +957,53 @@ void WebUIPlugin::handleCoreDumpDownload(AsyncWebServerRequest *request) {
     response->addHeader("Cache-Control", "no-cache");
 
     request->send(response);
+}
+
+void WebUIPlugin::emitFormatStatus(const char *status, const char *message) {
+    JsonDocument doc;
+    doc["tp"] = "evt:sd-format-progress";
+    doc["status"] = status;
+    if (message != nullptr) {
+        doc["msg"] = message;
+    }
+    ws.textAll(doc.as<String>());
+}
+
+void WebUIPlugin::sdFormatTask(void *arg) {
+    auto *self = static_cast<WebUIPlugin *>(arg);
+    const bool wasMounted = self->controller->isSDCard();
+    self->emitFormatStatus("formatting");
+    gaggimate::sd::FormatResult result = gaggimate::sd::formatSDCard(wasMounted);
+
+    const bool success = result == gaggimate::sd::FormatResult::Success ||
+                         result == gaggimate::sd::FormatResult::MountedSuccess;
+    if (success) {
+        // Reboot on every success path. On the mounted-success path this is
+        // belt-and-suspenders: after a wipe + reformat the old ProfileManager
+        // profiles + ShotHistory index are gone and various plugins hold file
+        // handles that `SD_MMC.end()` just invalidated. A clean reboot is
+        // simpler and safer than trying to reinit everything in place.
+        self->emitFormatStatus("rebooting");
+        vTaskDelay(pdMS_TO_TICKS(800)); // give the WS frame time to flush
+        ESP.restart();
+        // unreachable
+    }
+
+    self->emitFormatStatus("error", gaggimate::sd::toString(result));
+    self->sdFormatInProgress.store(false);
+    vTaskDelete(nullptr);
+}
+
+void WebUIPlugin::startSDCardFormat() {
+    // Reject duplicate spawns. A double-click or two-client race must not
+    // produce two tasks concurrently calling SD_MMC.end() / begin().
+    bool expected = false;
+    if (!sdFormatInProgress.compare_exchange_strong(expected, true)) {
+        emitFormatStatus("error", "format already in progress");
+        return;
+    }
+    emitFormatStatus("starting");
+    // 12 KB stack: f_mkfs allocates FAT tables + work buffers on the stack
+    // and routinely needs 6-8 KB on ESP32. 4 KB was cutting it close.
+    xTaskCreatePinnedToCore(&WebUIPlugin::sdFormatTask, "sd_format", 12 * 1024, this, 1, nullptr, 0);
 }

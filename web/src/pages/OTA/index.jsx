@@ -85,6 +85,23 @@ export function OTA() {
       apiService.off('evt:history-rebuild-progress', listenerId);
     };
   }, [apiService]);
+
+  useEffect(() => {
+    const listenerId = apiService.on('evt:sd-format-progress', msg => {
+      setFormatStatus(msg.status || '');
+      if (msg.status === 'completed') {
+        setFormatting(false);
+        setFormatted(true);
+      } else if (msg.status === 'error') {
+        setFormatting(false);
+        setFormatError(msg.msg || 'Format failed');
+      }
+    });
+    return () => {
+      apiService.off('evt:sd-format-progress', listenerId);
+    };
+  }, [apiService]);
+
   useEffect(() => {
     setTimeout(() => {
       apiService.send({ tp: 'req:ota-settings' });
@@ -133,6 +150,43 @@ export function OTA() {
     setRebuildProgress({ total: 0, current: 0, status: 'starting' });
     apiService.send({ tp: 'req:history:rebuild' });
   }, [apiService]);
+
+  const [formatting, setFormatting] = useState(false);
+  const [formatted, setFormatted] = useState(false);
+  const [formatStatus, setFormatStatus] = useState('');
+  const [formatError, setFormatError] = useState('');
+  const formatTimeoutRef = useRef(null);
+  const onFormatSD = useCallback(async () => {
+    const mounted = formData.sdTotal !== undefined;
+    const msg = mounted
+      ? 'Format SD card?\n\nThis permanently erases every file on the card and reboots the device. This action cannot be undone.'
+      : 'Attempt to mount + format the SD card?\n\nThe firmware does not currently see a mounted card. If a card is inserted, this will format it to FAT32 and reboot the device. Any data on the card will be erased.';
+    const ok = window.confirm(msg);
+    if (!ok) return;
+    setFormatted(false);
+    setFormatError('');
+    setFormatting(true);
+    setFormatStatus('starting');
+    apiService.send({ tp: 'req:sd:format' });
+    // Safety net: if the task stack-overflows or the device WDT-reboots, the
+    // WS never emits completed/error and the button would stay disabled
+    // until a page reload. 60 s is generous — a real f_mkfs on a 32 GB card
+    // finishes in well under 30 s.
+    if (formatTimeoutRef.current) clearTimeout(formatTimeoutRef.current);
+    formatTimeoutRef.current = setTimeout(() => {
+      setFormatting(false);
+      setFormatError('Timed out — the device may have rebooted. Check if an SD card is now detected and try again if needed.');
+    }, 60000);
+  }, [apiService, formData.sdTotal]);
+  // Clear timeout when format completes/errors — success paths reboot the
+  // device so the timeout firing post-reboot is harmless, but error paths
+  // should release the button immediately.
+  useEffect(() => {
+    if (!formatting && formatTimeoutRef.current) {
+      clearTimeout(formatTimeoutRef.current);
+      formatTimeoutRef.current = null;
+    }
+  }, [formatting]);
 
   if (isLoading) {
     return (
@@ -370,6 +424,37 @@ export function OTA() {
               {rebuilt && (
                 <span className='text-success ml-2'>
                   <FontAwesomeIcon icon={faCheck}></FontAwesomeIcon>
+                </span>
+              )}
+            </button>
+            <button
+              type='button'
+              className='btn btn-outline btn-error'
+              onClick={onFormatSD}
+              disabled={formatting}
+              title={
+                formData.sdTotal === undefined
+                  ? 'Attempts to format + mount. Use this when a card is physically inserted but not detected (wrong filesystem). Device will reboot on success.'
+                  : 'Erase everything on the SD card and lay down a fresh FAT filesystem'
+              }
+            >
+              Format SD Card
+              {formatting && (
+                <>
+                  <Spinner size={4} className='ml-2' />
+                  {formatStatus && (
+                    <span className='ml-2 text-xs'>{formatStatus}</span>
+                  )}
+                </>
+              )}
+              {formatted && (
+                <span className='text-success ml-2'>
+                  <FontAwesomeIcon icon={faCheck}></FontAwesomeIcon>
+                </span>
+              )}
+              {formatError && (
+                <span className='text-error ml-2 text-xs' title={formatError}>
+                  !
                 </span>
               )}
             </button>
