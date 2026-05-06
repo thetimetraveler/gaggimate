@@ -1,11 +1,21 @@
+import os
 import subprocess
 import datetime
 
 Import("env")
 
 def get_firmware_specifier_build_flag():
-    ret = subprocess.run(["git", "describe", "--tags", "--dirty", "--exclude", "nightly"], stdout=subprocess.PIPE, text=True) #Uses any tags
-    build_version = ret.stdout.strip()
+    # Fork builds: the CI workflow pre-computes out/version.txt with a
+    # patch-bumped "-fork." prerelease so the semver compares newer than
+    # upstream. Reuse it so BUILD_GIT_VERSION matches the release's
+    # version.txt exactly (otherwise isUpdateAvailable flips on every boot).
+    version_file = "out/version.txt"
+    if os.path.exists(version_file):
+        with open(version_file) as f:
+            build_version = f.read().strip()
+    else:
+        ret = subprocess.run(["git", "describe", "--tags", "--dirty", "--exclude", "nightly"], stdout=subprocess.PIPE, text=True) #Uses any tags
+        build_version = ret.stdout.strip()
     build_flag = "#define BUILD_GIT_VERSION \"" + build_version + "\""
     print ("Build version: " + build_version)
     return build_flag

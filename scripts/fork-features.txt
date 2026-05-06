@@ -1,0 +1,27 @@
+# Feature branches to merge into fork/main, in order.
+# Lines starting with # are comments. Blanks allowed.
+# The script skips branches that have already landed on upstream/master.
+# Remove a line once you're ready to stop tracking the fix (usually after
+# the matching upstream PR merges and you've fetched upstream/master).
+
+feature/fork-infra
+reliability/assorted-fixes
+fix/scale-tare-confirmation
+# Branches off fix/bookoo-complete and adds /api/scales/debug +
+# onMeasurement drop-counters for live diagnosis of brew-by-weight
+# not engaging. Revert to fix/bookoo-complete when root-caused.
+feature/scales-debug-endpoint
+schema/improve-profile-documentation
+
+# Combines fix/brew-tune-improvements + reliability/predictive-window-eviction
+# — they overlap in predictive.h. The integration branch carries a single
+# resolved merge so regens don't re-hit the conflict. Rebuild it if either
+# feature branch moves (see docs/FORK.md).
+integration/predictive-and-brew-tune
+
+feature/custom-ota-channel
+
+# Format-SD-Card button under System & Updates. Ships a WS handler +
+# destructive helper that wipes + re-mounts SD_MMC so a fresh card can
+# be laid down without pulling it out.
+feature/sd-format-button
